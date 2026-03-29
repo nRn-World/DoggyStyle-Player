@@ -55,16 +55,19 @@ Here is how DoggyStyle compares to traditional media players:
 ## 📸 Screenshots
 
 <p align="center">
-  <a href="Screenshot/Screenshot%201.png">
-    <img src="Screenshot/Screenshot%201.png" alt="Main Player Interface" width="45%" />
+  <a href="Sc1.png">
+    <img src="Sc1.png" alt="Main Player Interface" style="width:300px;" />
   </a>
-  <a href="Screenshot/Screenshot%202.png">
-    <img src="Screenshot/Screenshot%202.png" alt="Playlist & Settings" width="45%" />
+  <a href="Sc2.png">
+    <img src="Sc2.png" alt="Playlist & Settings" style="width:300px;" />
+  </a>
+  <a href="Sc3.png">
+    <img src="Sc3.png" alt="Video Controls" style="width:300px;" />
   </a>
 </p>
 
 <p align="center">
-  <em>Main Player Interface</em> &nbsp;&nbsp;•&nbsp;&nbsp; <em>Playlist & Settings</em>
+  <em>Main Player Interface</em> &nbsp;&nbsp;•&nbsp;&nbsp; <em>Playlist & Settings</em> &nbsp;&nbsp;•&nbsp;&nbsp; <em>Video Controls</em>
 </p>
 
 ---

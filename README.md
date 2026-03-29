@@ -76,19 +76,19 @@ Here is how DoggyStyle Player compares to traditional media players:
 
 ### Option 1: Windows Desktop App (Electron)
 
-1. Go to the [**Releases**](https://github.com/RobinAyzit/DoggyStylePlayer/releases) page.
-2. Download the latest Windows installer (`DoggyStylePlayer-Setup.exe`) or portable version.
+1. Go to the [**Releases**](https://github.com/RobinAyzit/DoggyStyle/releases) page.
+2. Download the latest Windows installer (`DoggyStyle-Setup.exe`) or portable version.
 3. Run the application. You can set it as your default video player in Windows!
 
 ### Option 2: Build from Source (For Developers)
 
 1. Clone the repository:
     ```bash
-    git clone https://github.com/RobinAyzit/DoggyStylePlayer.git
+    git clone https://github.com/RobinAyzit/DoggyStyle.git
     ```
 2. Navigate to the directory and install dependencies:
     ```bash
-    cd DoggyStyle Player
+    cd DoggyStyle
     npm install
     ```
 3. Start the development server:

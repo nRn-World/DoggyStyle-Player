@@ -53,7 +53,6 @@ function createWindow() {
     }
   });
 
-  mainWindow.maximize();
   mainWindow.setMenuBarVisibility(false);
   mainWindow.autoHideMenuBar = true;
 

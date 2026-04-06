@@ -338,8 +338,27 @@ export default function App() {
   // IPTV State
   // ---------------------------------------------------------
   const [sidebarMode, setSidebarMode] = useState<'files' | 'iptv'>('files');
-  const [iptvMode, setIptvMode] = useState<'xtream' | 'm3u'>(() => (localStorage.getItem('doggy_iptv_mode') as 'xtream' | 'm3u') || 'xtream');
+  const [iptvMode, setIptvMode] = useState<'xtream' | 'm3u' | 'code'>(() => (localStorage.getItem('doggy_iptv_mode') as 'xtream' | 'm3u' | 'code') || 'code');
   const [iptvType, setIptvType] = useState<'live' | 'movie' | 'series'>('live');
+  
+  // Activation
+  const [activationCode, setActivationCode] = useState('');
+  
+  const ACTIVATION_CODES: Record<string, { url: string; user: string; pass: string }> = {
+    "6923": { url: "http://premiumtest.tr:8080", user: "hBHCQDmz", pass: "ggY6RMm" }
+  };
+
+  const handleActivationLogin = () => {
+    const creds = ACTIVATION_CODES[activationCode.trim()];
+    if (creds) {
+      setXtreamUrl(creds.url);
+      setXtreamUser(creds.user);
+      setXtreamPass(creds.pass);
+      handleXtreamLogin(false, creds.url, creds.user, creds.pass);
+    } else {
+      alert("Invalid Activation Code");
+    }
+  };
   
   // Xtream
   const [xtreamUrl, setXtreamUrl] = useState(() => localStorage.getItem('doggy_xtream_url') || '');
@@ -461,12 +480,15 @@ export default function App() {
   }
 
   // Updated handleXtreamLogin to fetch VOD and set correct URLs
-  async function handleXtreamLogin(isAuto = false) {
-    if (!xtreamUrl || !xtreamUser || !xtreamPass) return;
+  async function handleXtreamLogin(isAuto = false, pUrl?: string, pUser?: string, pPass?: string) {
+    const uUrl = pUrl || xtreamUrl;
+    const uUser = pUser || xtreamUser;
+    const uPass = pPass || xtreamPass;
+    if (!uUrl || !uUser || !uPass) return;
     
     setIsIptvLoading(true);
-    const baseUrl = xtreamUrl.endsWith('/') ? xtreamUrl.slice(0, -1) : xtreamUrl;
-    const loginUrl = `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}`;
+    const baseUrl = uUrl.endsWith('/') ? uUrl.slice(0, -1) : uUrl;
+    const loginUrl = `${baseUrl}/player_api.php?username=${uUser}&password=${uPass}`;
     
     try {
       const { ipcRenderer } = (window as any).require('electron');
@@ -475,25 +497,25 @@ export default function App() {
       if (data.user_info && data.user_info.auth === 1) {
         setIsIptvLogged(true);
         if (!isAuto) {
-          localStorage.setItem('doggy_xtream_url', xtreamUrl);
-          localStorage.setItem('doggy_xtream_user', xtreamUser);
-          localStorage.setItem('doggy_xtream_pass', xtreamPass);
+          localStorage.setItem('doggy_xtream_url', uUrl);
+          localStorage.setItem('doggy_xtream_user', uUser);
+          localStorage.setItem('doggy_xtream_pass', uPass);
         }
         
         // Fetch LIVE
-        const streamData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_streams`);
+        const streamData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${uUser}&password=${uPass}&action=get_live_streams`);
         if (Array.isArray(streamData)) {
           setIptvStreams(streamData.map((s: any) => ({
             id: s.stream_id,
             name: s.name,
             icon: s.stream_icon,
             category_id: s.category_id,
-            url: `${baseUrl}/live/${xtreamUser}/${xtreamPass}/${s.stream_id}.m3u8` 
+            url: `${baseUrl}/live/${uUser}/${uPass}/${s.stream_id}.m3u8` 
           })));
         }
 
         // Fetch MOVIES (VOD)
-        const movieData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_vod_streams`);
+        const movieData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${uUser}&password=${uPass}&action=get_vod_streams`);
         if (Array.isArray(movieData)) {
           setIptvMovies(movieData.map((m: any) => ({
             id: m.stream_id,
@@ -501,27 +523,27 @@ export default function App() {
             icon: m.stream_icon,
             category_id: m.category_id,
             ext: m.container_extension || 'mkv',
-            url: `${baseUrl}/movie/${xtreamUser}/${xtreamPass}/${m.stream_id}.${m.container_extension || 'mkv'}`
+            url: `${baseUrl}/movie/${uUser}/${uPass}/${m.stream_id}.${m.container_extension || 'mkv'}`
           })));
         }
 
         // Fetch SERIES
-        const seriesData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_series`);
+        const seriesData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${uUser}&password=${uPass}&action=get_series`);
         if (Array.isArray(seriesData)) {
           setIptvSeries(seriesData.map((s: any) => ({
             id: s.series_id,
             name: s.name,
             icon: s.cover || s.stream_icon || "",
             category_id: s.category_id,
-            url: `${baseUrl}/series/${xtreamUser}/${xtreamPass}/${s.series_id}.mkv`
+            url: `${baseUrl}/series/${uUser}/${uPass}/${s.series_id}.mkv`
           })));
         }
 
         // Fetch Categories
         const [liveCats, movieCats, seriesCats] = await Promise.all([
-          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_categories`),
-          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_vod_categories`),
-          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_series_categories`)
+          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${uUser}&password=${uPass}&action=get_live_categories`),
+          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${uUser}&password=${uPass}&action=get_vod_categories`),
+          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${uUser}&password=${uPass}&action=get_series_categories`)
         ]);
 
         if (Array.isArray(liveCats)) setIptvLiveCategories(liveCats.map((c: any) => ({ id: c.category_id, name: c.category_name })));
@@ -1881,21 +1903,47 @@ export default function App() {
                 {!isIptvLogged ? (
                   <div className="p-5 space-y-4">
                     {/* ... (Keep existing login UI logic but cleaner) ... */}
-                    <div className="flex bg-theme-bg border border-theme-border rounded-xl p-1 mb-2">
-                       <button onClick={() => setIptvMode('xtream')} className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${iptvMode === 'xtream' ? 'bg-theme-accent text-black outline-none' : 'text-theme-text-muted hover:text-theme-text'}`}>Xtream</button>
-                       <button onClick={() => setIptvMode('m3u')} className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${iptvMode === 'm3u' ? 'bg-theme-accent text-black outline-none' : 'text-theme-text-muted hover:text-theme-text'}`}>M3U Link</button>
+                    <div className="flex bg-theme-bg border border-theme-border rounded-xl p-1 mb-6">
+                       <button onClick={() => setIptvMode('code')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all shadow-sm ${iptvMode === 'code' ? 'bg-theme-accent text-black scale-100 z-10' : 'text-theme-text-muted hover:text-theme-text hover:bg-theme-bg-tertiary scale-95'}`}>Code</button>
+                       <button onClick={() => setIptvMode('xtream')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all shadow-sm ${iptvMode === 'xtream' ? 'bg-theme-accent text-black scale-100 z-10' : 'text-theme-text-muted hover:text-theme-text hover:bg-theme-bg-tertiary scale-95'}`}>Xtream</button>
+                       <button onClick={() => setIptvMode('m3u')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all shadow-sm ${iptvMode === 'm3u' ? 'bg-theme-accent text-black scale-100 z-10' : 'text-theme-text-muted hover:text-theme-text hover:bg-theme-bg-tertiary scale-95'}`}>M3U</button>
                     </div>
 
-                    {iptvMode === 'xtream' ? (
+                    {iptvMode === 'code' ? (
+                      <div className="space-y-4">
+                         <div className="text-center text-xs text-theme-text-muted font-bold tracking-widest uppercase mb-1">Enter Activation Code</div>
+                         <div className="flex justify-center mb-4">
+                            <input 
+                              type="text" 
+                              maxLength={4} 
+                              placeholder="0000" 
+                              value={activationCode} 
+                              onChange={(e) => setActivationCode(e.target.value)} 
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleActivationLogin();
+                              }}
+                              className="w-32 bg-theme-bg border border-theme-border rounded-lg px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-theme-accent focus:ring-2 focus:ring-theme-accent outline-none uppercase placeholder:text-neutral-700 hover:border-theme-accent transition-colors" 
+                            />
+                         </div>
+                         <button onClick={handleActivationLogin} className="w-full bg-theme-accent hover:bg-emerald-400 text-black font-black py-3 rounded-xl active:scale-95 transition-all text-sm uppercase shadow-lg shadow-theme-accent/20">
+                           {isIptvLoading ? (
+                             <span className="flex items-center justify-center gap-2">
+                               <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                               {t.searching}
+                             </span>
+                           ) : "Activate & Login"}
+                         </button>
+                      </div>
+                    ) : iptvMode === 'xtream' ? (
                       <div className="space-y-3">
-                         <input type="text" placeholder="Server URL" value={xtreamUrl} onChange={(e) => setXtreamUrl(e.target.value)} className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text focus:ring-1 focus:ring-theme-accent outline-none" />
-                         <input type="text" placeholder="Username" value={xtreamUser} onChange={(e) => setXtreamUser(e.target.value)} className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text focus:ring-1 focus:ring-theme-accent outline-none" />
-                         <input type="password" placeholder="Password" value={xtreamPass} onChange={(e) => setXtreamPass(e.target.value)} className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text focus:ring-1 focus:ring-theme-accent outline-none" />
+                         <input type="text" placeholder="Server URL" value={xtreamUrl} onChange={(e) => setXtreamUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleXtreamLogin() }} className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2.5 text-xs text-theme-text focus:ring-1 focus:ring-theme-accent outline-none" />
+                         <input type="text" placeholder="Username" value={xtreamUser} onChange={(e) => setXtreamUser(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleXtreamLogin() }} className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2.5 text-xs text-theme-text focus:ring-1 focus:ring-theme-accent outline-none" />
+                         <input type="password" placeholder="Password" value={xtreamPass} onChange={(e) => setXtreamPass(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleXtreamLogin() }} className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2.5 text-xs text-theme-text focus:ring-1 focus:ring-theme-accent outline-none" />
                          <button onClick={() => handleXtreamLogin()} className="w-full bg-theme-accent text-black font-black py-2.5 rounded-lg active:scale-95 transition-all text-xs uppercase">{isIptvLoading ? t.searching : t.connect}</button>
                       </div>
                     ) : (
                       <div className="space-y-3">
-                         <input type="text" placeholder="Playlist URL" value={m3uUrl} onChange={(e) => setM3uUrl(e.target.value)} className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text focus:ring-1 focus:ring-theme-accent outline-none" />
+                         <input type="text" placeholder="Playlist URL" value={m3uUrl} onChange={(e) => setM3uUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleM3ULogin() }} className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2.5 text-xs text-theme-text focus:ring-1 focus:ring-theme-accent outline-none" />
                          <button onClick={() => handleM3ULogin()} className="w-full bg-theme-accent text-black font-black py-2.5 rounded-lg active:scale-95 transition-all text-xs uppercase">{isIptvLoading ? t.searching : t.connect}</button>
                       </div>
                     )}

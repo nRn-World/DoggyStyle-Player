@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ContextMenu } from './ContextMenu';
 import { Play, Pause, Square, SkipBack, SkipForward, Volume2, VolumeX, Maximize, FileVideo, X, Film, ListVideo, Trash2, Settings, ChevronDown, Copy, Check, Repeat, Repeat1, Shuffle } from 'lucide-react';
+import Hls from 'hls.js';
 
 const translations = {
   sv: {
@@ -172,6 +173,7 @@ export default function App() {
   const appRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
 
   const [playlist, setPlaylist] = useState<{id: string, name: string, url: string}[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -180,22 +182,101 @@ export default function App() {
   // Video State
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // Function to determine if a URL is an IPTV/HLS stream
+  const isIptvStream = (url: string) => {
+    if (!url) return false;
+    return url.includes('player_api.php') || url.includes('.m3u8') || url.includes('.ts') || url.includes(':8080/');
+  };
+
   // Handle video source and play state changes
   useEffect(() => {
-    if (!videoRef.current || !videoSrc) return;
+    if (!videoRef.current || !videoSrc) {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      return;
+    }
 
-    if (isPlaying) {
-      const playPromise = videoRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.error("Auto-play prevented or failed:", error);
-          setIsPlaying(false);
+    const isStream = isIptvStream(videoSrc);
+
+    if (isStream) {
+      if (Hls.isSupported()) {
+        if (hlsRef.current) {
+          hlsRef.current.destroy();
+        }
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 90
         });
+        hls.loadSource(videoSrc);
+        hls.attachMedia(videoRef.current);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (isPlaying && videoRef.current) {
+            videoRef.current.play().catch(() => {});
+          }
+        });
+        hlsRef.current = hls;
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                hls.recoverMediaError();
+                break;
+              default:
+                hls.destroy();
+                break;
+            }
+          }
+        });
+      } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
+        // Fallback for Safari/Mac
+        videoRef.current.src = videoSrc;
+      }
+    } else {
+      // Normal file
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      videoRef.current.src = videoSrc;
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [videoSrc]);
+
+  // Handle play/pause sync
+  useEffect(() => {
+    if (!videoRef.current || !videoSrc) return;
+    
+    if (isPlaying) {
+      // For standard files, handle play normally
+      if (!isIptvStream(videoSrc)) {
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.error("Playback error:", error);
+            setIsPlaying(false);
+          });
+        }
+      } else {
+        // For streams, ensure play
+        videoRef.current.play().catch(() => {});
       }
     } else {
       videoRef.current.pause();
     }
-  }, [videoSrc, isPlaying]);
+  }, [isPlaying, videoSrc]);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -1245,7 +1326,7 @@ export default function App() {
           <>
             <video
               ref={videoRef}
-              src={videoSrc}
+              src={isIptvStream(videoSrc) ? undefined : (videoSrc || undefined)}
               muted={isMuted}
               className="w-full h-full object-contain"
               style={transformStyle}
@@ -1414,7 +1495,7 @@ export default function App() {
             >
               <video 
                 ref={previewVideoRef}
-                src={videoSrc || undefined}
+                src={isIptvStream(videoSrc) ? undefined : (videoSrc || undefined)}
                 className="w-40 h-auto object-contain bg-black"
                 muted
                 playsInline

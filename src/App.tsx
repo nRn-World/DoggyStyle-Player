@@ -60,7 +60,22 @@ const translations = {
     nextVideo: "Nästa Video",
     exitApp: "Avsluta",
     fullscreen: "Helskärm",
-    windowscreen: "Fönsterläge"
+    windowscreen: "Fönsterläge",
+    iptv: "IPTV",
+    files: "Filer",
+    login: "Logga in",
+    url: "Server URL",
+    username: "Användarnamn",
+    password: "Lösenord",
+    connect: "Anslut",
+    categories: "Kategorier",
+    searching: "Söker...",
+    noChannels: "Inga kanaler hittades",
+    logout: "Logga ut",
+    streams: "Streams",
+    all: "Alla",
+    searchPlaceholder: "Sök kanal...",
+    iptvLoginRequired: "Vänligen logga in för att se IPTV-kanaler."
   },
   en: {
     settings: "Settings",
@@ -119,7 +134,22 @@ const translations = {
     nextVideo: "Next Video",
     exitApp: "Exit",
     fullscreen: "Fullscreen",
-    windowscreen: "Window Mode"
+    windowscreen: "Window Mode",
+    iptv: "IPTV",
+    files: "Files",
+    login: "Login",
+    url: "Server URL",
+    username: "Username",
+    password: "Password",
+    connect: "Connect",
+    categories: "Categories",
+    searching: "Searching...",
+    noChannels: "No channels found",
+    logout: "Logout",
+    streams: "Streams",
+    all: "All",
+    searchPlaceholder: "Search channel...",
+    iptvLoginRequired: "Please login to view IPTV channels."
   }
 };
 
@@ -225,6 +255,133 @@ export default function App() {
   useEffect(() => { localStorage.setItem('cinelens_theme', theme); }, [theme]);
   useEffect(() => { localStorage.setItem('cinelens_autoHideControls', autoHideControls.toString()); }, [autoHideControls]);
   useEffect(() => { localStorage.setItem('cinelens_autoRemoveFinished', autoRemoveFinished.toString()); }, [autoRemoveFinished]);
+
+  // ---------------------------------------------------------
+  // IPTV State
+  // ---------------------------------------------------------
+  const [sidebarMode, setSidebarMode] = useState<'files' | 'iptv'>('files');
+  const [iptvMode, setIptvMode] = useState<'xtream' | 'm3u'>(() => (localStorage.getItem('doggy_iptv_mode') as 'xtream' | 'm3u') || 'xtream');
+  
+  // Xtream
+  const [xtreamUrl, setXtreamUrl] = useState(() => localStorage.getItem('doggy_xtream_url') || '');
+  const [xtreamUser, setXtreamUser] = useState(() => localStorage.getItem('doggy_xtream_user') || '');
+  const [xtreamPass, setXtreamPass] = useState(() => localStorage.getItem('doggy_xtream_pass') || '');
+  
+  // M3U
+  const [m3uUrl, setM3uUrl] = useState(() => localStorage.getItem('doggy_m3u_url') || '');
+
+  const [isIptvLogged, setIsIptvLogged] = useState(false);
+  const [iptvCategories, setIptvCategories] = useState<{id: string, name: string}[]>([]);
+  const [iptvStreams, setIptvStreams] = useState<{id: string, name: string, icon: string, category_id: string, url: string}[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | 'all'>('all');
+  const [iptvSearch, setIptvSearch] = useState('');
+  const [isIptvLoading, setIsIptvLoading] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('doggy_iptv_mode', iptvMode);
+  }, [iptvMode]);
+
+  // Validate on mount
+  useEffect(() => {
+    if (iptvMode === 'xtream' && xtreamUrl && xtreamUser && xtreamPass) {
+      handleXtreamLogin(true);
+    } else if (iptvMode === 'm3u' && m3uUrl) {
+      handleM3ULogin(true);
+    }
+  }, []);
+
+  async function handleM3ULogin(isAuto = false) {
+    if (!m3uUrl) return;
+    setIsIptvLoading(true);
+    try {
+      const response = await fetch(m3uUrl);
+      const text = await response.text();
+      
+      const lines = text.split('\n');
+      const streams: any[] = [];
+      const cats: Set<string> = new Set();
+      let currentItem: any = null;
+
+      for (let line of lines) {
+        line = line.trim();
+        if (line.startsWith('#EXTINF:')) {
+          const name = line.split(',').pop() || "Unknown";
+          const icon = line.match(/tvg-logo="([^"]+)"/)?.[1] || "";
+          const group = line.match(/group-title="([^"]+)"/)?.[1] || "Default";
+          currentItem = { name, icon, category_id: group };
+          cats.add(group);
+        } else if (line.startsWith('http') && currentItem) {
+          currentItem.url = line;
+          currentItem.id = Math.random().toString(36).substr(2, 9);
+          streams.push(currentItem);
+          currentItem = null;
+        }
+      }
+
+      setIptvStreams(streams);
+      setIptvCategories(Array.from(cats).map(c => ({ id: c, name: c })));
+      setIsIptvLogged(true);
+      if (!isAuto) localStorage.setItem('doggy_m3u_url', m3uUrl);
+    } catch (e) {
+      console.error("M3U Load Error:", e);
+      if (!isAuto) alert("Failed to load M3U playlist.");
+    } finally {
+      setIsIptvLoading(false);
+    }
+  }
+
+  async function handleXtreamLogin(isAuto = false) {
+    if (!xtreamUrl || !xtreamUser || !xtreamPass) return;
+    
+    setIsIptvLoading(true);
+    const baseUrl = xtreamUrl.endsWith('/') ? xtreamUrl.slice(0, -1) : xtreamUrl;
+    const loginUrl = `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}`;
+    
+    try {
+      const response = await fetch(loginUrl);
+      const data = await response.json();
+      
+      if (data.user_info && data.user_info.auth === 1) {
+        setIsIptvLogged(true);
+        if (!isAuto) {
+          localStorage.setItem('doggy_xtream_url', xtreamUrl);
+          localStorage.setItem('doggy_xtream_user', xtreamUser);
+          localStorage.setItem('doggy_xtream_pass', xtreamPass);
+        }
+        
+        // Fetch categories
+        const catRes = await fetch(`${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_categories`);
+        const catData = await catRes.json();
+        setIptvCategories(catData.map((c: any) => ({ id: c.category_id, name: c.category_name })));
+        
+        // Fetch ALL streams initially OR base them on category selection later
+        const streamRes = await fetch(`${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_streams`);
+        const streamData = await streamRes.json();
+        setIptvStreams(streamData.map((s: any) => ({
+          id: s.stream_id,
+          name: s.name,
+          icon: s.stream_icon,
+          category_id: s.category_id
+        })));
+      } else {
+        if (!isAuto) alert("Login failed. Please check your credentials.");
+      }
+    } catch (e) {
+      console.error("IPTV Login Error:", e);
+      if (!isAuto) alert("Network error connecting to IPTV server.");
+    } finally {
+      setIsIptvLoading(false);
+    }
+  }
+
+  function handleLogoutIptv() {
+    setIsIptvLogged(false);
+    setIptvCategories([]);
+    setIptvStreams([]);
+    localStorage.removeItem('doggy_xtream_url');
+    localStorage.removeItem('doggy_xtream_user');
+    localStorage.removeItem('doggy_xtream_pass');
+  }
 
   const [emailCopied, setEmailCopied] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -1349,57 +1506,217 @@ export default function App() {
       {/* Playlist Sidebar */}
       <div className={`bg-theme-bg-secondary flex flex-col shrink-0 z-20 transition-all duration-300 ease-in-out overflow-hidden ${(showPlaylist && !isFullscreen) ? 'w-80 border-l border-theme-border' : 'w-0 border-none'}`}>
         <div className="w-80 h-full flex flex-col">
-          <button 
-            onClick={() => setShowPlaylist(false)}
-            className="p-5 border-b border-theme-border flex items-center gap-3 hover:bg-theme-bg-tertiary transition-colors cursor-pointer w-full text-left"
-            title={t.hidePlaylist}
-          >
-            <ListVideo size={20} className="text-theme-primary" />
-            <h2 className="font-semibold text-sm tracking-wide text-theme-text uppercase">{t.playlist}</h2>
-          </button>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {playlist.length === 0 ? (
-            <div className="text-theme-text-muted text-sm text-center mt-10 p-6 border-2 border-dashed border-theme-border rounded-xl flex flex-col items-center gap-4">
-              <FileVideo size={32} className="text-theme-text-muted" />
-              <p>{t.dropPlaylist}</p>
-            </div>
-          ) : (
-            playlist.map((item, idx) => (
-              <div 
-                key={item.id}
-                onClick={() => {
-                  setCurrentIndex(idx);
-                  setIsPlaying(true);
-                }}
-                className={`p-3 rounded-lg cursor-pointer text-sm truncate transition-all flex items-center gap-3 group ${idx === currentIndex ? 'bg-theme-primary text-theme-primary-text font-medium shadow-md' : 'hover:bg-theme-bg-tertiary text-theme-text-muted'}`}
-              >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs ${idx === currentIndex ? 'bg-black/20' : 'bg-theme-bg-tertiary group-hover:bg-theme-border'}`}>
-                  {idx === currentIndex && isPlaying ? <Play size={10} className="ml-0.5" /> : idx + 1}
-                </div>
-                <span className="truncate">{item.name}</span>
-                <button 
-                  className="ml-auto opacity-0 group-hover:opacity-100 hover:text-theme-accent p-1 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    URL.revokeObjectURL(item.url);
-                    setPlaylist(prev => prev.filter(p => p.id !== item.id));
-                    if (idx === currentIndex) {
-                      if (idx < playlist.length - 1) {
-                        // stays same index, but points to next item
-                      } else {
-                        setCurrentIndex(Math.max(0, playlist.length - 2));
-                      }
-                    } else if (idx < currentIndex) {
-                      setCurrentIndex(currentIndex - 1);
-                    }
-                  }}
-                >
-                  <Trash2 size={14} />
-                </button>
+          {/* Sidebar Tabs */}
+          <div className="flex border-b border-theme-border">
+            <button 
+              onClick={() => setSidebarMode('files')}
+              className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-all ${sidebarMode === 'files' ? 'text-theme-primary border-b-2 border-theme-primary bg-theme-primary/5' : 'text-theme-text-muted hover:text-theme-text'}`}
+            >
+              {t.files}
+            </button>
+            <button 
+              onClick={() => setSidebarMode('iptv')}
+              className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-all ${sidebarMode === 'iptv' ? 'text-theme-primary border-b-2 border-theme-primary bg-theme-primary/5' : 'text-theme-text-muted hover:text-theme-text'}`}
+            >
+              {t.iptv}
+            </button>
+            <button 
+              onClick={() => setShowPlaylist(false)}
+              className="px-4 text-theme-text-muted hover:text-theme-text"
+              title={t.hidePlaylist}
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {sidebarMode === 'files' ? (
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {playlist.length === 0 ? (
+                  <div className="text-theme-text-muted text-sm text-center mt-10 p-6 border-2 border-dashed border-theme-border rounded-xl flex flex-col items-center gap-4">
+                    <FileVideo size={32} className="text-theme-text-muted" />
+                    <p>{t.dropPlaylist}</p>
+                  </div>
+                ) : (
+                  playlist.map((item, idx) => (
+                    <div 
+                      key={item.id}
+                      onClick={() => {
+                        setCurrentIndex(idx);
+                        setIsPlaying(true);
+                        setZoomRect(null);
+                        setZoomState({ scale: 1, tx: 0, ty: 0, vcX: 50, vcY: 50 });
+                      }}
+                      className={`p-3 rounded-lg cursor-pointer text-sm truncate transition-all flex items-center gap-3 group ${idx === currentIndex && sidebarMode === 'files' ? 'bg-theme-primary text-theme-primary-text font-medium shadow-md' : 'hover:bg-theme-bg-tertiary text-theme-text-muted'}`}
+                    >
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs ${idx === currentIndex && sidebarMode === 'files' ? 'bg-black/20' : 'bg-theme-bg-tertiary group-hover:bg-theme-border'}`}>
+                        {idx === currentIndex && sidebarMode === 'files' && isPlaying ? <Play size={10} className="ml-0.5" /> : idx + 1}
+                      </div>
+                      <span className="truncate">{item.name}</span>
+                    </div>
+                  ))
+                )}
               </div>
-            ))
-          )}
-        </div>
+            ) : (
+              // IPTV MODE
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {!isIptvLogged ? (
+                  <div className="p-5 space-y-4">
+                    {/* Mode Toggle */}
+                    <div className="flex bg-theme-bg border border-theme-border rounded-xl p-1 mb-2">
+                       <button 
+                        onClick={() => setIptvMode('xtream')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${iptvMode === 'xtream' ? 'bg-theme-primary text-theme-primary-text shadow-sm' : 'text-theme-text-muted hover:text-theme-text'}`}
+                      >
+                        Xtream
+                      </button>
+                      <button 
+                        onClick={() => setIptvMode('m3u')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${iptvMode === 'm3u' ? 'bg-theme-primary text-theme-primary-text shadow-sm' : 'text-theme-text-muted hover:text-theme-text'}`}
+                      >
+                         M3U Link
+                      </button>
+                    </div>
+
+                    {iptvMode === 'xtream' ? (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-theme-text-muted ml-1">{t.url}</label>
+                          <input 
+                            type="text" 
+                            placeholder="http://url:port"
+                            value={xtreamUrl}
+                            onChange={(e) => setXtreamUrl(e.target.value)}
+                            className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text focus:outline-none focus:ring-1 focus:ring-theme-primary"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-theme-text-muted ml-1">{t.username}</label>
+                          <input 
+                            type="text" 
+                            placeholder="..."
+                            value={xtreamUser}
+                            onChange={(e) => setXtreamUser(e.target.value)}
+                            className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text focus:outline-none focus:ring-1 focus:ring-theme-primary"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-theme-text-muted ml-1">{t.password}</label>
+                          <input 
+                            type="password" 
+                            placeholder="..."
+                            value={xtreamPass}
+                            onChange={(e) => setXtreamPass(e.target.value)}
+                            className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text focus:outline-none focus:ring-1 focus:ring-theme-primary"
+                          />
+                        </div>
+                        <button 
+                          onClick={() => handleXtreamLogin()}
+                          disabled={isIptvLoading}
+                          className="w-full bg-theme-primary hover:bg-theme-hover text-theme-primary-text font-bold py-3 rounded-lg transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                        >
+                          {isIptvLoading ? t.searching : t.connect}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-theme-text-muted ml-1">M3U Playlist URL</label>
+                          <input 
+                            type="text" 
+                            placeholder="https://.../playlist.m3u"
+                            value={m3uUrl}
+                            onChange={(e) => setM3uUrl(e.target.value)}
+                            className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text focus:outline-none focus:ring-1 focus:ring-theme-primary"
+                          />
+                        </div>
+                        <button 
+                          onClick={() => handleM3ULogin()}
+                          disabled={isIptvLoading}
+                          className="w-full bg-theme-primary hover:bg-theme-hover text-theme-primary-text font-bold py-3 rounded-lg transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                        >
+                          {isIptvLoading ? t.searching : t.connect}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                    {/* Search & Categories */}
+                    <div className="p-3 border-b border-theme-border space-y-3">
+                      <input 
+                        type="text"
+                        placeholder={t.searchPlaceholder}
+                        value={iptvSearch}
+                        onChange={(e) => setIptvSearch(e.target.value)}
+                        className="w-full bg-theme-bg-tertiary border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text focus:outline-none"
+                      />
+                      <select 
+                        value={selectedCategoryId}
+                        onChange={(e) => setSelectedCategoryId(e.target.value)}
+                        className="w-full bg-theme-bg border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text focus:outline-none"
+                      >
+                        <option value="all">{t.all} {t.categories}</option>
+                        {iptvCategories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Channels List */}
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1 iptv-channels-list">
+                      {iptvStreams
+                        .filter(s => (selectedCategoryId === 'all' || s.category_id === selectedCategoryId))
+                        .filter(s => s.name.toLowerCase().includes(iptvSearch.toLowerCase()))
+                        .map(stream => (
+                          <div 
+                            key={stream.id}
+                            style={{ contentVisibility: 'auto', containIntrinsicSize: '0 44px' } as any}
+                            onClick={() => {
+                              let finalUrl = stream.url;
+                              
+                              if (iptvMode === 'xtream') {
+                                const baseUrl = xtreamUrl.endsWith('/') ? xtreamUrl.slice(0, -1) : xtreamUrl;
+                                finalUrl = `${baseUrl}/live/${xtreamUser}/${xtreamPass}/${stream.id}.ts`;
+                              }
+                              
+                              const newItem = {
+                                id: `iptv-${stream.id}`,
+                                name: stream.name,
+                                url: finalUrl
+                              };
+                              
+                              setPlaylist([newItem]);
+                              setCurrentIndex(0);
+                              setIsPlaying(true);
+                              setZoomRect(null);
+                              setZoomState({ scale: 1, tx: 0, ty: 0, vcX: 50, vcY: 50 });
+                            }}
+                            className="p-2 rounded-lg hover:bg-theme-bg-tertiary cursor-pointer flex items-center gap-3 group transition-all"
+                          >
+                            <div className="w-10 h-10 rounded bg-black/20 flex items-center justify-center overflow-hidden shrink-0 border border-theme-border">
+                              {stream.icon ? (
+                                <img src={stream.icon} alt="" className="w-full h-full object-contain" onError={(e) => (e.currentTarget.style.display='none')} />
+                              ) : (
+                                <Film size={16} className="text-theme-text-muted" />
+                              )}
+                            </div>
+                            <span className="text-xs text-theme-text-muted group-hover:text-theme-text truncate font-medium">{stream.name}</span>
+                          </div>
+                        ))}
+                    </div>
+                    
+                    <button 
+                      onClick={handleLogoutIptv}
+                      className="p-3 text-[10px] uppercase font-bold text-theme-text-muted hover:text-theme-accent text-center border-t border-theme-border"
+                    >
+                      {t.logout}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       

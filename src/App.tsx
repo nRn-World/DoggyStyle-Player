@@ -241,7 +241,7 @@ export default function App() {
       });
       ipcRenderer.on('update-error', (_: any, msg: string) => {
         console.error('Update error:', msg);
-        alert('Update error: ' + msg);
+        // Silent error to avoid annoying users with firewall/network issues
       });
     } catch {
       // not in electron

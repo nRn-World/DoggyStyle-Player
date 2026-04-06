@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "doggy-player",
   "private": true,
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "Doggy Video Player",
   "author": {
     "name": "nRn World",

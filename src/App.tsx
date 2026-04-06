@@ -76,7 +76,10 @@ const translations = {
     streams: "Streams",
     all: "Alla",
     searchPlaceholder: "Sök kanal...",
-    iptvLoginRequired: "Vänligen logga in för att se IPTV-kanaler."
+    iptvLoginRequired: "Vänligen logga in för att se IPTV-kanaler.",
+    live: "Live TV",
+    movies: "Filmer",
+    series: "Serier"
   },
   en: {
     settings: "Settings",
@@ -150,7 +153,10 @@ const translations = {
     streams: "Streams",
     all: "All",
     searchPlaceholder: "Search channel...",
-    iptvLoginRequired: "Please login to view IPTV channels."
+    iptvLoginRequired: "Please login to view IPTV channels.",
+    live: "Live TV",
+    movies: "Movies",
+    series: "Series"
   }
 };
 
@@ -178,14 +184,13 @@ export default function App() {
   const [playlist, setPlaylist] = useState<{id: string, name: string, url: string}[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const videoSrc = playlist[currentIndex]?.url || null;
-  
-  // Video State
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Function to determine if a URL is an IPTV/HLS stream
-  const isIptvStream = (url: string) => {
+  // Function to determine if a URL should be handled by hls.js
+  const isHlsStream = (url: string) => {
     if (!url) return false;
-    return url.includes('player_api.php') || url.includes('.m3u8') || url.includes('.ts') || url.includes(':8080/');
+    // Strictly target .m3u8 or player_api calls that we target with HLS
+    return url.includes('.m3u8');
   };
 
   // Handle video source and play state changes
@@ -198,7 +203,7 @@ export default function App() {
       return;
     }
 
-    const isStream = isIptvStream(videoSrc);
+    const isStream = isHlsStream(videoSrc);
 
     if (isStream) {
       if (Hls.isSupported()) {
@@ -261,7 +266,7 @@ export default function App() {
     
     if (isPlaying) {
       // For standard files, handle play normally
-      if (!isIptvStream(videoSrc)) {
+      if (!isHlsStream(videoSrc)) {
         const playPromise = videoRef.current.play();
         if (playPromise !== undefined) {
           playPromise.catch(error => {
@@ -342,6 +347,7 @@ export default function App() {
   // ---------------------------------------------------------
   const [sidebarMode, setSidebarMode] = useState<'files' | 'iptv'>('files');
   const [iptvMode, setIptvMode] = useState<'xtream' | 'm3u'>(() => (localStorage.getItem('doggy_iptv_mode') as 'xtream' | 'm3u') || 'xtream');
+  const [iptvType, setIptvType] = useState<'live' | 'movie' | 'series'>('live');
   
   // Xtream
   const [xtreamUrl, setXtreamUrl] = useState(() => localStorage.getItem('doggy_xtream_url') || '');
@@ -353,7 +359,12 @@ export default function App() {
 
   const [isIptvLogged, setIsIptvLogged] = useState(false);
   const [iptvCategories, setIptvCategories] = useState<{id: string, name: string}[]>([]);
-  const [iptvStreams, setIptvStreams] = useState<{id: string, name: string, icon: string, category_id: string, url: string}[]>([]);
+  const [iptvLiveCategories, setIptvLiveCategories] = useState<{id: string, name: string}[]>([]);
+  const [iptvMovieCategories, setIptvMovieCategories] = useState<{id: string, name: string}[]>([]);
+  const [iptvSeriesCategories, setIptvSeriesCategories] = useState<{id: string, name: string}[]>([]);
+  const [iptvStreams, setIptvStreams] = useState<{id: string, name: string, icon: string, category_id: string, url: string, ext?: string}[]>([]);
+  const [iptvMovies, setIptvMovies] = useState<{id: string, name: string, icon: string, category_id: string, url: string, ext?: string}[]>([]);
+  const [iptvSeries, setIptvSeries] = useState<{id: string, name: string, icon: string, category_id: string, url: string, ext?: string}[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | 'all'>('all');
   const [iptvSearch, setIptvSearch] = useState('');
   const [isIptvLoading, setIsIptvLoading] = useState(false);
@@ -370,6 +381,15 @@ export default function App() {
       handleM3ULogin(true);
     }
   }, []);
+
+  // Update categories when switching between Live, Movies, and Series
+  useEffect(() => {
+    if (iptvMode !== 'xtream') return;
+    if (iptvType === 'live') setIptvCategories(iptvLiveCategories);
+    else if (iptvType === 'movie') setIptvCategories(iptvMovieCategories);
+    else if (iptvType === 'series') setIptvCategories(iptvSeriesCategories);
+    setSelectedCategoryId('all');
+  }, [iptvType, iptvLiveCategories, iptvMovieCategories, iptvSeriesCategories, iptvMode]);
 
   async function handleM3ULogin(isAuto = false) {
     if (!m3uUrl) return;
@@ -418,6 +438,7 @@ export default function App() {
     }
   }
 
+  // Updated handleXtreamLogin to fetch VOD and set correct URLs
   async function handleXtreamLogin(isAuto = false) {
     if (!xtreamUrl || !xtreamUser || !xtreamPass) return;
     
@@ -427,8 +448,6 @@ export default function App() {
     
     try {
       const { ipcRenderer } = (window as any).require('electron');
-      
-      // 1. LOGIN Check
       const data = await ipcRenderer.invoke('iptv-fetch', loginUrl);
       
       if (data.user_info && data.user_info.auth === 1) {
@@ -439,31 +458,61 @@ export default function App() {
           localStorage.setItem('doggy_xtream_pass', xtreamPass);
         }
         
-        // 2. Fetch categories
-        const catData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_categories`);
-        if (Array.isArray(catData)) {
-          setIptvCategories(catData.map((c: any) => ({ id: c.category_id, name: c.category_name })));
-        }
-        
-        // 3. Fetch ALL streams initially
+        // Fetch LIVE
         const streamData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_streams`);
         if (Array.isArray(streamData)) {
           setIptvStreams(streamData.map((s: any) => ({
             id: s.stream_id,
             name: s.name,
             icon: s.stream_icon,
-            category_id: s.category_id
+            category_id: s.category_id,
+            url: `${baseUrl}/live/${xtreamUser}/${xtreamPass}/${s.stream_id}.m3u8` 
           })));
         }
+
+        // Fetch MOVIES (VOD)
+        const movieData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_vod_streams`);
+        if (Array.isArray(movieData)) {
+          setIptvMovies(movieData.map((m: any) => ({
+            id: m.stream_id,
+            name: m.name,
+            icon: m.stream_icon,
+            category_id: m.category_id,
+            ext: m.container_extension || 'mkv',
+            url: `${baseUrl}/movie/${xtreamUser}/${xtreamPass}/${m.stream_id}.${m.container_extension || 'mkv'}`
+          })));
+        }
+
+        // Fetch SERIES
+        const seriesData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_series`);
+        if (Array.isArray(seriesData)) {
+          setIptvSeries(seriesData.map((s: any) => ({
+            id: s.series_id,
+            name: s.name,
+            icon: s.last_modified,
+            category_id: s.category_id,
+            url: `${baseUrl}/series/${xtreamUser}/${xtreamPass}/${s.series_id}.mkv`
+          })));
+        }
+
+        // Fetch Categories
+        const [liveCats, movieCats, seriesCats] = await Promise.all([
+          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_categories`),
+          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_vod_categories`),
+          ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_series_categories`)
+        ]);
+
+        if (Array.isArray(liveCats)) setIptvLiveCategories(liveCats.map((c: any) => ({ id: c.category_id, name: c.category_name })));
+        if (Array.isArray(movieCats)) setIptvMovieCategories(movieCats.map((c: any) => ({ id: c.category_id, name: c.category_name })));
+        if (Array.isArray(seriesCats)) setIptvSeriesCategories(seriesCats.map((c: any) => ({ id: c.category_id, name: c.category_name })));
+        
+        // Initial setup for Live categories
+        setIptvCategories(Array.isArray(liveCats) ? liveCats.map((c: any) => ({ id: c.category_id, name: c.category_name })) : []);
       } else {
-        if (!isAuto) alert("Login failed. Check your credentials (user/pass).");
+        if (!isAuto) alert("Login failed. Check your credentials.");
       }
     } catch (e: any) {
       console.error("IPTV Login Error:", e);
-      if (!isAuto) {
-        const errorMsg = e.message || "Network error connect to IPTV server.";
-        alert(`Xtream Error: ${errorMsg}\nTip: Ensure URL starts with http:// and includes port if needed.`);
-      }
     } finally {
       setIsIptvLoading(false);
     }
@@ -1326,7 +1375,7 @@ export default function App() {
           <>
             <video
               ref={videoRef}
-              src={isIptvStream(videoSrc) ? undefined : (videoSrc || undefined)}
+              src={isHlsStream(videoSrc) ? undefined : (videoSrc || undefined)}
               muted={isMuted}
               className="w-full h-full object-contain"
               style={transformStyle}
@@ -1495,7 +1544,7 @@ export default function App() {
             >
               <video 
                 ref={previewVideoRef}
-                src={isIptvStream(videoSrc) ? undefined : (videoSrc || undefined)}
+                src={isHlsStream(videoSrc) ? undefined : (videoSrc || undefined)}
                 className="w-40 h-auto object-contain bg-black"
                 muted
                 playsInline
@@ -1737,6 +1786,30 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="flex-1 flex flex-col overflow-hidden">
+                    {/* Type Navigation (Live / Movie / Series) */}
+                    {iptvMode === 'xtream' && (
+                      <div className="flex px-3 pt-2 gap-1">
+                        <button 
+                          onClick={() => setIptvType('live')}
+                          className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${iptvType === 'live' ? 'bg-theme-accent text-white' : 'bg-theme-bg-tertiary text-theme-text-muted hover:bg-theme-bg-tertiary/80'}`}
+                        >
+                          LIVE
+                        </button>
+                        <button 
+                          onClick={() => setIptvType('movie')}
+                          className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${iptvType === 'movie' ? 'bg-theme-accent text-white' : 'bg-theme-bg-tertiary text-theme-text-muted hover:bg-theme-bg-tertiary/80'}`}
+                        >
+                          MOVIES
+                        </button>
+                        <button 
+                          onClick={() => setIptvType('series')}
+                          className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${iptvType === 'series' ? 'bg-theme-accent text-white' : 'bg-theme-bg-tertiary text-theme-text-muted hover:bg-theme-bg-tertiary/80'}`}
+                        >
+                          SERIES
+                        </button>
+                      </div>
+                    )}
+
                     {/* Search & Categories */}
                     <div className="p-3 border-b border-theme-border space-y-3">
                       <input 
@@ -1760,25 +1833,18 @@ export default function App() {
 
                     {/* Channels List */}
                     <div className="flex-1 overflow-y-auto p-2 space-y-1 iptv-channels-list">
-                      {iptvStreams
+                      {(iptvType === 'live' ? iptvStreams : iptvType === 'movie' ? iptvMovies : iptvSeries)
                         .filter(s => (selectedCategoryId === 'all' || s.category_id === selectedCategoryId))
                         .filter(s => s.name.toLowerCase().includes(iptvSearch.toLowerCase()))
                         .map(stream => (
                           <div 
-                            key={stream.id}
+                            key={`${iptvType}-${stream.id}`}
                             style={{ contentVisibility: 'auto', containIntrinsicSize: '0 44px' } as any}
                             onClick={() => {
-                              let finalUrl = stream.url;
-                              
-                              if (iptvMode === 'xtream') {
-                                const baseUrl = xtreamUrl.endsWith('/') ? xtreamUrl.slice(0, -1) : xtreamUrl;
-                                finalUrl = `${baseUrl}/live/${xtreamUser}/${xtreamPass}/${stream.id}.ts`;
-                              }
-                              
                               const newItem = {
-                                id: `iptv-${stream.id}`,
+                                id: `iptv-${iptvType}-${stream.id}`,
                                 name: stream.name,
-                                url: finalUrl
+                                url: stream.url
                               };
                               
                               setPlaylist([newItem]);

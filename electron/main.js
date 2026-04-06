@@ -1,4 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -37,6 +39,35 @@ if (!gotTheLock) {
         createWindow();
       }
     });
+
+    // Auto-updater (only in packaged app)
+    if (app.isPackaged) {
+      autoUpdater.logger = console;
+      autoUpdater.checkForUpdatesAndNotify();
+
+      autoUpdater.on('checking-for-update', () => {
+        console.log('Checking for update...');
+      });
+
+      autoUpdater.on('update-available', (info) => {
+        console.log('Update available:', info.version);
+        mainWindow?.webContents.send('update-available');
+      });
+
+      autoUpdater.on('update-not-available', (info) => {
+        console.log('Update not available. Current:', info.version);
+      });
+
+      autoUpdater.on('update-downloaded', (info) => {
+        console.log('Update downloaded:', info.version);
+        mainWindow?.webContents.send('update-downloaded');
+      });
+
+      autoUpdater.on('error', (err) => {
+        console.error('Auto-updater error:', err.message);
+        mainWindow?.webContents.send('update-error', err.message);
+      });
+    }
   });
 }
 
@@ -78,6 +109,14 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 }
+
+ipcMain.on('quit-app', () => {
+  app.quit();
+});
+
+ipcMain.on('restart-and-install', () => {
+  autoUpdater.quitAndInstall();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

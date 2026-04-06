@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { ContextMenu } from './ContextMenu';
 import { Play, Pause, Square, SkipBack, SkipForward, Volume2, VolumeX, Maximize, FileVideo, X, Film, ListVideo, Trash2, Settings, ChevronDown, Copy, Check, Repeat, Repeat1, Shuffle } from 'lucide-react';
 
 const translations = {
@@ -51,7 +52,15 @@ const translations = {
     autoHide2s: "Efter 2 sekunder",
     autoHide5s: "Efter 5 sekunder",
     playlistSettings: "Spellista",
-    autoRemoveFinished: "Ta bort färdigspelade videor"
+    autoRemoveFinished: "Ta bort färdigspelade videor",
+    play: "Spela upp",
+    pause: "Pausa",
+    stop: "Stoppa",
+    previous: "Föregående",
+    nextVideo: "Nästa Video",
+    exitApp: "Avsluta",
+    fullscreen: "Helskärm",
+    windowscreen: "Fönsterläge"
   },
   en: {
     settings: "Settings",
@@ -102,7 +111,15 @@ const translations = {
     autoHide2s: "After 2 seconds",
     autoHide5s: "After 5 seconds",
     playlistSettings: "Playlist",
-    autoRemoveFinished: "Auto-remove finished videos"
+    autoRemoveFinished: "Auto-remove finished videos",
+    play: "Play",
+    pause: "Pause",
+    stop: "Stop",
+    previous: "Previous",
+    nextVideo: "Next Video",
+    exitApp: "Exit",
+    fullscreen: "Fullscreen",
+    windowscreen: "Window Mode"
   }
 };
 
@@ -114,7 +131,7 @@ const CustomLogo = ({ className, size = 24 }: { className?: string, size?: numbe
     >
       <img 
         src="https://lh3.googleusercontent.com/d/1U5GlsJezjk_KU3dBFxTMXvmsL5KxfkNY" 
-        alt="DoggyStyle Logo"
+        alt="Doggy Player Logo"
         className="w-full h-auto object-contain pointer-events-none"
         referrerPolicy="no-referrer"
         crossOrigin="anonymous"
@@ -212,6 +229,31 @@ export default function App() {
   useEffect(() => { localStorage.setItem('cinelens_autoRemoveFinished', autoRemoveFinished.toString()); }, [autoRemoveFinished]);
 
   const [emailCopied, setEmailCopied] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const { ipcRenderer } = (window as any).require('electron');
+      ipcRenderer.on('update-available', () => setUpdateAvailable(true));
+      ipcRenderer.on('update-downloaded', () => {
+        setUpdateAvailable(false);
+        setUpdateDownloaded(true);
+      });
+      ipcRenderer.on('update-error', (_: any, msg: string) => {
+        console.error('Update error:', msg);
+        alert('Update error: ' + msg);
+      });
+    } catch {
+      // not in electron
+    }
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
 
   useEffect(() => {
     const handleFileLoad = (filePath: string) => {
@@ -734,27 +776,48 @@ export default function App() {
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
+      // ALT+scroll: zoom towards mouse cursor (no selection needed)
+      if (e.altKey) {
+        e.preventDefault();
+        const rect = container.getBoundingClientRect();
+        const mouseXPct = ((e.clientX - rect.left) / rect.width) * 100;
+        const mouseYPct = ((e.clientY - rect.top) / rect.height) * 100;
+
+        setZoomState(prev => {
+          const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+          let newScale = prev.scale * zoomFactor;
+          newScale = Math.max(1, Math.min(newScale, 100));
+
+          // Zoom towards mouse position
+          const vcX = (mouseXPct - prev.tx) / prev.scale;
+          const vcY = (mouseYPct - prev.ty) / prev.scale;
+
+          let newTx = mouseXPct - vcX * newScale;
+          let newTy = mouseYPct - vcY * newScale;
+
+          newTx = Math.max(100 * (1 - newScale), Math.min(newTx, 0));
+          newTy = Math.max(100 * (1 - newScale), Math.min(newTy, 0));
+
+          return { ...prev, scale: newScale, tx: newTx, ty: newTy, vcX, vcY };
+        });
+        return;
+      }
+
+      // Scroll without ALT: zoom only if selection exists
       if (zoomRectRef.current) {
         e.preventDefault();
         setZoomState(prev => {
-          // Use a multiplier for faster zooming up to 100x
           const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
           let newScale = prev.scale * zoomFactor;
-          newScale = Math.max(1, Math.min(newScale, 100)); // Max 100x zoom
+          newScale = Math.max(1, Math.min(newScale, 100));
 
           let newTx = prev.tx + prev.vcX * (prev.scale - newScale);
           let newTy = prev.ty + prev.vcY * (prev.scale - newScale);
 
-          // Clamp translation so video doesn't leave the container
           newTx = Math.max(100 * (1 - newScale), Math.min(newTx, 0));
           newTy = Math.max(100 * (1 - newScale), Math.min(newTy, 0));
 
-          return {
-            ...prev,
-            scale: newScale,
-            tx: newTx,
-            ty: newTy
-          };
+          return { ...prev, scale: newScale, tx: newTx, ty: newTy };
         });
       }
     };
@@ -984,6 +1047,7 @@ export default function App() {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onDoubleClick={toggleFullscreen}
+        onContextMenu={handleContextMenu}
       >
         {!videoSrc ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black">
@@ -999,7 +1063,7 @@ export default function App() {
               <label className="cursor-pointer bg-theme-primary hover:bg-theme-hover text-white px-6 py-2.5 rounded-md font-medium text-sm transition-colors flex items-center gap-2 shadow-sm">
                 <FileVideo size={18} />
                 <span>{t.chooseFiles}</span>
-                <input type="file" accept="video/*,.mkv,.avi,.mov,.wmv,.flv,.webm,.ogg,.ogv,.3gp,.vob,.ts,.m2ts,.rm,.rmvb,.divx,.xvid,.mpeg,.mpg,.m4v,.hevc,.av1" multiple className="hidden" onChange={handleFileChange} />
+                <input type="file" accept="video/*,.mkv,.avi,.mov,.wmv,.flv,.webm,.ogg,.ogv,.3gp,.vob,.ts,.m2ts,.rm,.rmvb,.divx,.xvid,.mpeg,.mpg,.m4v,.hevc,.av1,video/mp2t" multiple className="hidden" onChange={handleFileChange} />
               </label>
             </div>
           </div>
@@ -1012,6 +1076,13 @@ export default function App() {
               className="w-full h-full object-contain"
               style={transformStyle}
               onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime || 0)}
+              onError={(e) => {
+                const video = videoRef.current;
+                if (video?.error) {
+                  console.error('Video error:', video.error.message, video.error.code);
+                  alert('Video error: ' + video.error.message);
+                }
+              }}
               onLoadedMetadata={() => {
                 if (videoRef.current) {
                   videoRef.current.volume = Math.min(1, volume);
@@ -1102,8 +1173,8 @@ export default function App() {
               />
             )}
 
-            {/* Zoom Indicator Box */}
-            {zoomRect && !isSelecting && (
+            {/* Zoom Indicator Box - only show while actively selecting */}
+            {zoomRect && isSelecting && (
               <div 
                 className="absolute border-2 border-blue-500/50 bg-blue-500/10 pointer-events-none transition-all duration-100 ease-out"
                 style={{
@@ -1329,6 +1400,68 @@ export default function App() {
         </div>
       </div>
       
+      {/* Update notifications */}
+      {updateAvailable && (
+        <div className="fixed bottom-6 right-6 z-[80] bg-theme-bg border border-theme-border rounded-xl shadow-2xl p-4 flex items-center gap-4 max-w-sm">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-theme-text">Uppdatering tillgänglig</p>
+            <p className="text-xs text-theme-text-muted mt-0.5">Laddar ner i bakgrunden...</p>
+          </div>
+          <button onClick={() => setUpdateAvailable(false)} className="text-theme-text-muted hover:text-theme-text transition-colors"><X size={16} /></button>
+        </div>
+      )}
+
+      {updateDownloaded && (
+        <div className="fixed bottom-6 right-6 z-[80] bg-theme-bg border border-theme-primary rounded-xl shadow-2xl p-4 flex items-center gap-4 max-w-sm">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-theme-text">Uppdatering klar</p>
+            <p className="text-xs text-theme-text-muted mt-0.5">Starta om för att installera den nya versionen.</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                try {
+                  const { ipcRenderer } = (window as any).require('electron');
+                  ipcRenderer.send('restart-and-install');
+                } catch { }
+              }}
+              className="bg-theme-primary hover:bg-theme-hover text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+            >
+              Starta om
+            </button>
+            <button onClick={() => setUpdateDownloaded(false)} className="text-theme-text-muted hover:text-theme-text transition-colors"><X size={16} /></button>
+          </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          isPlaying={isPlaying}
+          isFullscreen={isFullscreen}
+          hasMultipleVideos={playlist.length > 1}
+          t={t}
+          onClose={() => setContextMenu(null)}
+          onPlayPause={togglePlay}
+          onStop={stopVideo}
+          onPrevious={() => setCurrentIndex(i => Math.max(0, i - 1))}
+          onNext={() => setCurrentIndex(i => Math.min(playlist.length - 1, i + 1))}
+          onSettings={() => setShowSettingsModal(true)}
+          onPlaylist={() => setShowPlaylist(p => !p)}
+          onFullscreen={toggleFullscreen}
+          onExit={() => {
+            try {
+              const { ipcRenderer } = (window as any).require('electron');
+              ipcRenderer.send('quit-app');
+            } catch {
+              console.warn('Exit: not in Electron');
+            }
+          }}
+        />
+      )}
+
       {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -1442,7 +1575,7 @@ export default function App() {
             </div>
 
             <div className="p-5 border-t border-theme-border text-center space-y-2">
-              <div className="text-xs text-theme-text-muted">{t.about} • {t.version} 1.0.0</div>
+              <div className="text-xs text-theme-text-muted">{t.about} • {t.version} {(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.2')}</div>
               <div className="text-xs text-theme-text-muted">
                 Created 2026 by © nRn World<br/>
                 <div className="flex items-center justify-center gap-2 mt-1">

@@ -1,8 +1,8 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "1.0.1",
-  "description": "DoggyStyle Video Player",
+  "version": "1.0.9",
+  "description": "Doggy Video Player",
   "author": "nRn World",
   "type": "module",
   "main": "electron/main.js",
@@ -21,6 +21,7 @@
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
+    "electron-updater": "^6.8.3",
     "express": "^4.21.2",
     "jimp": "^1.6.0",
     "lucide-react": "^0.546.0",
@@ -45,13 +46,14 @@
     "wait-on": "^9.0.4"
   },
   "build": {
-    "appId": "com.doggystyle.player",
-    "productName": "DoggyStyle Player",
+    "appId": "com.doggy.player",
+    "productName": "Doggy Player",
     "directories": {
       "output": "release"
     },
     "win": {
       "icon": "Logo Bilder/logoW-cropped-no-bg.png",
+      "artifactName": "Doggy-Player-Setup-${version}.${ext}",
       "target": [
         "nsis",
         "zip"
@@ -62,12 +64,18 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "DoggyStyle Player"
+      "shortcutName": "Doggy Player",
+      "license": "LICENSE.txt"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "Logo Bilder/logoW-cropped-no-bg.png"
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "nRn-World",
+      "repo": "Doggy-Player"
+    }
   }
 }

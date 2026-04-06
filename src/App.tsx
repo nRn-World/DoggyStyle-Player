@@ -129,12 +129,9 @@ const CustomLogo = ({ className, size = 24 }: { className?: string, size?: numbe
       className={`relative inline-flex items-center justify-center ${className || ''}`} 
       style={{ width: size }}
     >
-      <video
-        src="Logo Bilder/logomp4.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
+      <img
+        src="logo.gif"
+        alt="Doggy Player Logo"
         className="w-full h-auto object-contain pointer-events-none"
       />
     </div>

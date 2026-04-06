@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Doggy Video Player",
   "author": "nRn World",
   "type": "module",
@@ -15,7 +15,8 @@
     "dev:electron": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on http://127.0.0.1:3000 && electron .\"",
     "build:electron": "npm run build && electron-builder --win",
     "build:electron:mac": "npm run build && electron-builder --mac",
-    "build:electron:all": "npm run build && electron-builder --win --mac",
+    "build:electron:linux": "npm run build && electron-builder --linux",
+    "build:electron:all": "npm run build && electron-builder --win --mac --linux",
     "build:electron:zip": "npm run build && electron-builder --win zip"
   },
   "dependencies": {
@@ -68,6 +69,15 @@
       "target": [
         "dmg",
         "zip"
+      ]
+    },
+    "linux": {
+      "icon": "Logo Bilder/icon.png",
+      "category": "Video",
+      "artifactName": "Doggy-Player-${version}.${ext}",
+      "target": [
+        "AppImage",
+        "deb"
       ]
     },
     "dmg": {

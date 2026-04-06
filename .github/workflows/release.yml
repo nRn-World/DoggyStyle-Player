@@ -12,7 +12,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
     
     runs-on: ${{ matrix.os }}
 
@@ -41,14 +41,23 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:electron:mac
 
+      - name: Build & Package (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:electron:linux
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/*.exe
             release/*.dmg
+            release/*.AppImage
+            release/*.deb
             release/*.zip
             release/latest.yml
             release/latest-mac.yml
+            release/latest-linux.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -294,8 +294,15 @@ export default function App() {
     if (!m3uUrl) return;
     setIsIptvLoading(true);
     try {
-      const response = await fetch(m3uUrl);
-      const text = await response.text();
+      let text = '';
+      try {
+        const { ipcRenderer } = (window as any).require('electron');
+        text = await ipcRenderer.invoke('iptv-fetch', m3uUrl);
+      } catch (ipcErr) {
+        // Fallback to normal fetch if not in electron
+        const response = await fetch(m3uUrl);
+        text = await response.text();
+      }
       
       const lines = text.split('\n');
       const streams: any[] = [];
@@ -324,7 +331,7 @@ export default function App() {
       if (!isAuto) localStorage.setItem('doggy_m3u_url', m3uUrl);
     } catch (e) {
       console.error("M3U Load Error:", e);
-      if (!isAuto) alert("Failed to load M3U playlist.");
+      if (!isAuto) alert("Failed to load M3U playlist. " + (e instanceof Error ? e.message : "Network error."));
     } finally {
       setIsIptvLoading(false);
     }
@@ -338,8 +345,10 @@ export default function App() {
     const loginUrl = `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}`;
     
     try {
-      const response = await fetch(loginUrl);
-      const data = await response.json();
+      const { ipcRenderer } = (window as any).require('electron');
+      
+      // 1. LOGIN Check
+      const data = await ipcRenderer.invoke('iptv-fetch', loginUrl);
       
       if (data.user_info && data.user_info.auth === 1) {
         setIsIptvLogged(true);
@@ -349,26 +358,31 @@ export default function App() {
           localStorage.setItem('doggy_xtream_pass', xtreamPass);
         }
         
-        // Fetch categories
-        const catRes = await fetch(`${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_categories`);
-        const catData = await catRes.json();
-        setIptvCategories(catData.map((c: any) => ({ id: c.category_id, name: c.category_name })));
+        // 2. Fetch categories
+        const catData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_categories`);
+        if (Array.isArray(catData)) {
+          setIptvCategories(catData.map((c: any) => ({ id: c.category_id, name: c.category_name })));
+        }
         
-        // Fetch ALL streams initially OR base them on category selection later
-        const streamRes = await fetch(`${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_streams`);
-        const streamData = await streamRes.json();
-        setIptvStreams(streamData.map((s: any) => ({
-          id: s.stream_id,
-          name: s.name,
-          icon: s.stream_icon,
-          category_id: s.category_id
-        })));
+        // 3. Fetch ALL streams initially
+        const streamData = await ipcRenderer.invoke('iptv-fetch', `${baseUrl}/player_api.php?username=${xtreamUser}&password=${xtreamPass}&action=get_live_streams`);
+        if (Array.isArray(streamData)) {
+          setIptvStreams(streamData.map((s: any) => ({
+            id: s.stream_id,
+            name: s.name,
+            icon: s.stream_icon,
+            category_id: s.category_id
+          })));
+        }
       } else {
-        if (!isAuto) alert("Login failed. Please check your credentials.");
+        if (!isAuto) alert("Login failed. Check your credentials (user/pass).");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("IPTV Login Error:", e);
-      if (!isAuto) alert("Network error connecting to IPTV server.");
+      if (!isAuto) {
+        const errorMsg = e.message || "Network error connect to IPTV server.";
+        alert(`Xtream Error: ${errorMsg}\nTip: Ensure URL starts with http:// and includes port if needed.`);
+      }
     } finally {
       setIsIptvLoading(false);
     }

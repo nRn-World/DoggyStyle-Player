@@ -27,11 +27,48 @@ This project is **NOT** licensed under MIT. It is licensed under the **nRn World
 
 * **🔍 Advanced Zooming & Panning**: Scroll the mouse wheel to zoom in/out smoothly. Click and drag to pan around the video.
 * **🎯 Area Selection Zoom**: Hold `Shift` and draw a rectangle over the video to instantly zoom into that specific detail.
-* **🔄 Instant Rotation**: Video recorded sideways? Rotate it instantly (90°, 180°, 270°) with a single click or hotkey.
-* **⚡ Dynamic Speed Control**: Hold the Play button (or Spacebar) for instant slow-motion. Hold `ALT + →` to quickly fast-forward at 1.5x speed.
+* **🔄 Instant Rotation**: Video recorded sideways? Rotate it instantly with a single click or hotkey.
+* **⚡ Dynamic Speed Control**: Hold the Play button (or Spacebar) for instant slow-motion. Hold `ALT + →` to fast-forward at 1.5x speed.
 * **📂 Smart Playlist**: Drag and drop multiple files. Enable "Auto-remove finished" to keep your queue clean automatically.
-* **🎨 Modern Interface**: A beautiful, distraction-free dark UI with auto-hiding controls that respect your viewing experience.
+* **📺 IPTV Support**: Connect via Xtream Codes, M3U playlist, or activation code. Supports Live TV, Movies and Series.
+* **🎬 Subtitle Support**: Load `.srt`, `.vtt`, `.ass`, `.ssa`, `.sub`, `.smi`, `.txt` files. Sync offset ±30s.
+* **📸 Screenshot**: Capture any video frame with `Alt+S` or the camera button.
+* **🎚️ Equalizer**: Bass, Mid, Treble ±12dB audio equalizer built into Settings.
+* **📡 EPG TV Guide**: Load XML EPG data to see what's on now and next for live IPTV channels.
+* **🎨 Modern Interface**: A beautiful, distraction-free dark UI with auto-hiding controls.
 * **⌨️ Power-User Shortcuts**: Fully controllable via keyboard for a seamless, mouse-free workflow.
+
+---
+
+## 📋 Latest Update — v1.1.29
+
+**Bug Fixes**
+- `encodeForKV`/`decodeFromKV` — activation code encoding was broken
+- Logout did not clear all states and localStorage keys
+- Logout button called wrong function
+- `autoRemoveFinished` + shuffle had wrong logic for next video
+- `formatTime` did not show hours for videos longer than 60 min
+- File formats in `main.js` only matched 5 formats — extended to all supported formats
+- Missing translations for 6 shortcuts in the shortcuts modal
+- `ContextMenu.test.tsx` was missing `isFullscreen` and `onFullscreen` in test props
+- Subtitle icon was misaligned — missing `flex items-center` on wrapper div
+- Logout did not clear `iptvMovies`, `iptvSeries`, categories, search state
+
+**New Features**
+- Subtitle support — `.srt`, `.vtt`, `.ass`, `.ssa`, `.sub`, `.smi`, `.txt`
+- Subtitle sync offset ±30s with slider and buttons
+- IPTV login restructured — Code / Xtream / M3U with sub-categories Playlist and Stream URL
+- Stream URL field for direct links to `.m3u8`, `.mp4` etc.
+- HLS quality selector in controls bar (Auto + manual)
+- IPTV default quality setting in Settings
+- Persistent login — stays logged in after restart and updates
+- Screenshot with `Alt+S` and camera button
+- Equalizer — Bass, Mid, Treble ±12dB (moved to Settings)
+- EPG TV guide — load XML, shows Now/Next per channel
+- EPG program name shown directly on channel cards in grid
+- Settings modal now scrollable with ESC to close
+- Settings icon in sidebar removed (only in controls bar)
+- File open via "Open with" now supports all video formats
 
 ---
 

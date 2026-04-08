@@ -2376,48 +2376,6 @@ export default function App() {
               <Camera size={20} />
             </button>
 
-            {/* Equalizer button */}
-            <div className="relative flex items-center" ref={eqMenuRef}>
-              <button
-                onClick={() => { initAudio(); setShowEqMenu(p => !p); }}
-                className={`transition-colors ${(eqBass !== 0 || eqMid !== 0 || eqTreble !== 0) ? 'text-theme-accent' : 'text-theme-text hover:text-theme-accent'}`}
-                title={t.equalizer}
-              >
-                <SlidersHorizontal size={20} />
-              </button>
-              {showEqMenu && (
-                <div className="absolute bottom-10 right-0 w-64 bg-theme-bg border border-theme-border rounded-xl shadow-2xl z-50 overflow-hidden">
-                  <div className="p-3 border-b border-theme-border flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-widest text-theme-text-muted">{t.equalizer}</span>
-                    {(eqBass !== 0 || eqMid !== 0 || eqTreble !== 0) && (
-                      <button onClick={resetEq} className="text-[10px] text-red-400 hover:text-red-300 font-bold uppercase">Reset</button>
-                    )}
-                  </div>
-                  {([
-                    { label: 'Bass', key: 'bass' as const, value: eqBass, freq: '200Hz' },
-                    { label: 'Mid', key: 'mid' as const, value: eqMid, freq: '1kHz' },
-                    { label: 'Treble', key: 'treble' as const, value: eqTreble, freq: '4kHz' },
-                  ]).map(({ label, key, value, freq }) => (
-                    <div key={key} className="px-4 py-3 border-b border-theme-border last:border-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-theme-text">{label}</span>
-                        <span className="text-[10px] text-theme-text-muted">{freq} · <span className={value !== 0 ? 'text-theme-accent font-bold' : ''}>{value > 0 ? '+' : ''}{value}dB</span></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-theme-text-muted w-6">-12</span>
-                        <input
-                          type="range" min="-12" max="12" step="1" value={value}
-                          onChange={(e) => applyEq(key, parseInt(e.target.value))}
-                          className="flex-1 h-1 accent-theme-accent cursor-pointer"
-                        />
-                        <span className="text-[10px] text-theme-text-muted w-5">+12</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Subtitle button */}
             <div className="relative flex items-center" ref={subtitleMenuRef}>
               <button
@@ -2967,16 +2925,21 @@ export default function App() {
 
       {/* Settings Modal */}
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-theme-bg-secondary rounded-xl w-full max-w-md border border-theme-border shadow-2xl overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-5 border-b border-theme-border">
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowSettingsModal(false); }}
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+        >
+          <div className="bg-theme-bg-secondary rounded-xl w-full max-w-md border border-theme-border shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-5 border-b border-theme-border shrink-0">
               <h2 className="text-xl font-semibold text-theme-text">{t.settings}</h2>
               <button onClick={() => setShowSettingsModal(false)} className="text-theme-text-muted hover:text-theme-text transition-colors">
                 <X size={20} />
               </button>
             </div>
             
-            <div className="p-5 space-y-6 flex-1 overflow-y-auto">
+            <div className="p-5 space-y-6 overflow-y-auto flex-1">
               {/* Språk */}
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-theme-text">{t.language}</h3>
@@ -3114,9 +3077,40 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Equalizer */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-theme-text">{t.equalizer}</h3>
+                  {(eqBass !== 0 || eqMid !== 0 || eqTreble !== 0) && (
+                    <button onClick={resetEq} className="text-xs text-red-400 hover:text-red-300 font-bold uppercase">Reset</button>
+                  )}
+                </div>
+                {([
+                  { label: 'Bass', key: 'bass' as const, value: eqBass, freq: '200Hz' },
+                  { label: 'Mid', key: 'mid' as const, value: eqMid, freq: '1kHz' },
+                  { label: 'Treble', key: 'treble' as const, value: eqTreble, freq: '4kHz' },
+                ]).map(({ label, key, value, freq }) => (
+                  <div key={key}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm text-theme-text">{label}</span>
+                      <span className="text-xs text-theme-text-muted">{freq} · <span className={value !== 0 ? 'text-theme-accent font-bold' : ''}>{value > 0 ? '+' : ''}{value}dB</span></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-theme-text-muted w-6">-12</span>
+                      <input
+                        type="range" min="-12" max="12" step="1" value={value}
+                        onChange={(e) => { initAudio(); applyEq(key, parseInt(e.target.value)); }}
+                        className="flex-1 h-1 accent-theme-accent cursor-pointer"
+                      />
+                      <span className="text-[10px] text-theme-text-muted w-5">+12</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               {/* Tangentbordsgenvägar */}
               <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-theme-text">{t.shortcuts}</h3>                <button 
+                <h3 className="text-sm font-semibold text-theme-text">{t.shortcuts}</h3>
                   onClick={() => setShowShortcutsModal(true)}
                   className="w-full bg-theme-primary hover:bg-theme-hover text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-sm"
                 >

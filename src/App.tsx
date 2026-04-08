@@ -1314,6 +1314,7 @@ export default function App() {
   const eqMidRef = useRef<BiquadFilterNode | null>(null);
   const eqTrebleRef = useRef<BiquadFilterNode | null>(null);
   const [showEqMenu, setShowEqMenu] = useState(false);
+  const [showEqSettings, setShowEqSettings] = useState(false);
   const eqMenuRef = useRef<HTMLDivElement>(null);
   const [eqBass, setEqBass] = useState(0);
   const [eqMid, setEqMid] = useState(0);
@@ -3078,34 +3079,52 @@ export default function App() {
               </div>
 
               {/* Equalizer */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-theme-text">{t.equalizer}</h3>
-                  {(eqBass !== 0 || eqMid !== 0 || eqTreble !== 0) && (
-                    <button onClick={resetEq} className="text-xs text-red-400 hover:text-red-300 font-bold uppercase">Reset</button>
-                  )}
-                </div>
-                {([
-                  { label: 'Bass', key: 'bass' as const, value: eqBass, freq: '200Hz' },
-                  { label: 'Mid', key: 'mid' as const, value: eqMid, freq: '1kHz' },
-                  { label: 'Treble', key: 'treble' as const, value: eqTreble, freq: '4kHz' },
-                ]).map(({ label, key, value, freq }) => (
-                  <div key={key}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm text-theme-text">{label}</span>
-                      <span className="text-xs text-theme-text-muted">{freq} · <span className={value !== 0 ? 'text-theme-accent font-bold' : ''}>{value > 0 ? '+' : ''}{value}dB</span></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-theme-text-muted w-6">-12</span>
-                      <input
-                        type="range" min="-12" max="12" step="1" value={value}
-                        onChange={(e) => { initAudio(); applyEq(key, parseInt(e.target.value)); }}
-                        className="flex-1 h-1 accent-theme-accent cursor-pointer"
-                      />
-                      <span className="text-[10px] text-theme-text-muted w-5">+12</span>
-                    </div>
+              <div className="border border-theme-border rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setShowEqSettings(p => !p)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-theme-bg-tertiary transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-theme-text">{t.equalizer}</span>
+                    {(eqBass !== 0 || eqMid !== 0 || eqTreble !== 0) && (
+                      <span className="text-[10px] bg-theme-accent text-black font-black px-1.5 py-0.5 rounded-full">ON</span>
+                    )}
                   </div>
-                ))}
+                  <div className="flex items-center gap-2">
+                    {(eqBass !== 0 || eqMid !== 0 || eqTreble !== 0) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); resetEq(); }}
+                        className="text-[10px] text-red-400 hover:text-red-300 font-bold uppercase"
+                      >Reset</button>
+                    )}
+                    <ChevronDown size={16} className={`text-theme-text-muted transition-transform ${showEqSettings ? 'rotate-180' : ''}`} />
+                  </div>
+                </button>
+                {showEqSettings && (
+                  <div className="px-4 pb-4 pt-2 space-y-4 border-t border-theme-border bg-theme-bg/30">
+                    {([
+                      { label: 'Bass', key: 'bass' as const, value: eqBass, freq: '200Hz' },
+                      { label: 'Mid', key: 'mid' as const, value: eqMid, freq: '1kHz' },
+                      { label: 'Treble', key: 'treble' as const, value: eqTreble, freq: '4kHz' },
+                    ]).map(({ label, key, value, freq }) => (
+                      <div key={key}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm text-theme-text">{label}</span>
+                          <span className="text-xs text-theme-text-muted">{freq} · <span className={value !== 0 ? 'text-theme-accent font-bold' : ''}>{value > 0 ? '+' : ''}{value}dB</span></span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-theme-text-muted w-6">-12</span>
+                          <input
+                            type="range" min="-12" max="12" step="1" value={value}
+                            onChange={(e) => { initAudio(); applyEq(key, parseInt(e.target.value)); }}
+                            className="flex-1 h-1 accent-theme-accent cursor-pointer"
+                          />
+                          <span className="text-[10px] text-theme-text-muted w-5">+12</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Tangentbordsgenvägar */}

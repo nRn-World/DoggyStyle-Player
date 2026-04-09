@@ -70,6 +70,8 @@
       "icon": "Logo Bilder/logoW-cropped-no-bg1024x1024.png",
       "category": "public.app-category.video",
       "artifactName": "Doggy-Player-${version}.${ext}",
+      "identity": null,
+      "notarize": false,
       "target": [
         "dmg",
         "zip"
@@ -80,8 +82,7 @@
       "category": "Video",
       "artifactName": "Doggy-Player-${version}.${ext}",
       "target": [
-        "AppImage",
-        "deb"
+        "AppImage"
       ]
     },
     "dmg": {

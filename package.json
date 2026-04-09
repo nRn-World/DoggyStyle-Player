@@ -1,7 +1,7 @@
 {
   "name": "doggy-player",
   "private": true,
-  "version": "1.1.30",
+  "version": "1.1.31",
   "description": "Doggy Video Player",
   "author": {
     "name": "nRn World",
@@ -10,6 +10,7 @@
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
+    "postinstall": "node scripts/patch-ffmpeg.js",
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",

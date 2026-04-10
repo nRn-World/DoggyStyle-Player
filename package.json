@@ -1,7 +1,7 @@
 {
   "name": "doggy-player",
   "private": true,
-  "version": "1.1.33",
+  "version": "1.1.34",
   "description": "Doggy Video Player",
   "author": {
     "name": "nRn World",
@@ -108,15 +108,16 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Doggy Player",
       "license": "LICENSE.txt",
-      "installerSidebar": "Logo Bilder/Installation.png",
-      "uninstallerSidebar": "Logo Bilder/Installation.png"
+      "installerSidebar": "Logo Bilder/installerSidebar.bmp",
+      "uninstallerSidebar": "Logo Bilder/installerSidebar.bmp"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "Logo Bilder/logomp4.mp4",
       "Logo Bilder/logoW-cropped-no-bg1024x1024.png",
-      "Logo Bilder/Installation.png"
+      "Logo Bilder/Installation.png",
+      "Logo Bilder/installerSidebar.bmp"
     ],
     "publish": {
       "provider": "github",

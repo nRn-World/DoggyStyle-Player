@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ContextMenu } from './ContextMenu';
-import { Play, Pause, Square, SkipBack, SkipForward, Volume2, VolumeX, Maximize, FileVideo, X, Film, ListVideo, Trash2, Settings, ChevronDown, Copy, Check, Repeat, Repeat1, Shuffle, Monitor, LogOut, Search, Grid, Heart, Key, Captions, Upload, Camera, SlidersHorizontal, Tv2, Activity } from 'lucide-react';
+import { Play, Pause, Square, SkipBack, SkipForward, Volume2, VolumeX, Maximize, FileVideo, X, Film, ListVideo, Trash2, Settings, ChevronDown, Copy, Check, Repeat, Repeat1, Shuffle, Monitor, LogOut, Search, Grid, Heart, Key, Captions, Upload, Camera, SlidersHorizontal, Tv2, Activity, FolderPlus, FolderEdit, FolderMinus, FolderOpen, MoreVertical, Edit3 } from 'lucide-react';
 import Hls from 'hls.js';
 
 const translations = {
@@ -61,6 +61,8 @@ const translations = {
     epg: "TV Guide",
     epgUrl: "EPG URL",
     epgNow: "Now",
+    deleteFavorites: "Delete all favorites",
+    deleteFavoritesConfirm: "Are you sure you want to delete the Favorites category?",
     epgNext: "Next",
     epgNoData: "No guide data",
     epgLoading: "Loading guide...",
@@ -148,6 +150,8 @@ const translations = {
     iptvQuality: "IPTV Standardkvalitet",
     iptvQualityAuto: "Auto (Rekommenderas)",
     screenshotSaved: "Skärmdump sparad!",
+    deleteFavorites: "Radera alla favoriter",
+    deleteFavoritesConfirm: "Är du säker på att du vill radera Favorit kategorin?",
     equalizer: "Equalizer",
     epg: "TV-tablå",
     epgUrl: "EPG URL",
@@ -551,17 +555,76 @@ export default function App() {
   const [isSeriesInfoLoading, setIsSeriesInfoLoading] = useState(false);
   const [showIptvOverlay, setShowIptvOverlay] = useState(false);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
+  interface FavoriteFolder { name: string; items: string[]; }
   const [favorites, setFavorites] = useState<string[]>(() => JSON.parse(localStorage.getItem('doggy_iptv_favorites') || '[]'));
+  const [favoriteFolders, setFavoriteFolders] = useState<FavoriteFolder[]>(() => JSON.parse(localStorage.getItem('doggy_iptv_folders') || '[]'));
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [moveMenu, setMoveMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    // Favorites handled by sync block
+  }, [favorites]);
+  const getSyncKey = () => {
+    const mainIdentity = xtreamUrl ? `${xtreamUrl}|${xtreamUser}` : m3uUrl;
+    if (!mainIdentity) return null;
+    return `favs_${btoa(unescape(encodeURIComponent(mainIdentity))).replace(/[^a-zA-Z0-9]/g, '')}`;
+  };
+
+  const saveToCloud = async (favs: string[], folders: FavoriteFolder[]) => {
+    const key = getSyncKey();
+    if (!key) return;
+    const { ipcRenderer } = (window as any).require('electron');
+    const data = encodeForKV({ items: favs, folders });
+    try {
+      await ipcRenderer.invoke('iptv-fetch', `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/${key}/${data}`);
+    } catch (e) {}
+  };
+
+  const loadFromCloud = async () => {
+    const key = getSyncKey();
+    if (!key) return;
+    setIsSyncing(true);
+    const { ipcRenderer } = (window as any).require('electron');
+    try {
+      const b64 = await ipcRenderer.invoke('iptv-fetch', `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/${key}`);
+      if (b64 && b64 !== "Key not found") {
+        const data = decodeFromKV(b64);
+        if (data.items) setFavorites(data.items);
+        if (data.folders) setFavoriteFolders(data.folders);
+      }
+    } catch (e) {}
+    setIsSyncing(false);
+  };
 
   useEffect(() => {
     localStorage.setItem('doggy_iptv_favorites', JSON.stringify(favorites));
-  }, [favorites]);
+    localStorage.setItem('doggy_iptv_folders', JSON.stringify(favoriteFolders));
+    saveToCloud(favorites, favoriteFolders);
+  }, [favorites, favoriteFolders]);
+
 
   const [networkPing, setNetworkPing] = useState(24);
+  const [networkType, setNetworkType] = useState('LAN');
   useEffect(() => {
+    const updateNetworkInfo = async () => {
+      try {
+        const { ipcRenderer } = (window as any).require('electron');
+        const type = await ipcRenderer.invoke('get-network-info');
+        if (type) setNetworkType(type);
+      } catch (e) {
+        const conn = (navigator as any).connection;
+        if (conn) {
+          if (conn.type === 'wifi') setNetworkType('Wifi');
+          else if (conn.type === 'cellular') setNetworkType('4G/5G');
+          else setNetworkType('LAN');
+        }
+      }
+    };
+    updateNetworkInfo();
     const interval = setInterval(() => {
       setNetworkPing(prev => Math.max(12, Math.min(80, prev + (Math.floor(Math.random() * 5) - 2))));
-    }, 2000);
+      updateNetworkInfo();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -582,6 +645,46 @@ export default function App() {
       }, 100);
     }
   }, [showIptvOverlay, videoSrc, selectedCategoryId, iptvType]);
+
+  
+  const createFavoriteFolder = () => {
+    const name = window.prompt("Enter new category name:");
+    if (name && name.trim()) {
+      if (favoriteFolders.some(f => f.name === name.trim())) return alert("Category already exists");
+      setFavoriteFolders(prev => [...prev, { name: name.trim(), items: [] }]);
+    }
+  };
+
+  const deleteFavoriteFolder = (name: string) => {
+    if (window.confirm(`Are you sure you want to delete category "${name}"?`)) {
+      setFavoriteFolders(prev => prev.filter(f => f.name !== name));
+    }
+  };
+
+  const renameFavoriteFolder = (oldName: string) => {
+    const newName = window.prompt("Enter new name:", oldName);
+    if (newName && newName.trim() && newName !== oldName) {
+      if (favoriteFolders.some(f => f.name === newName.trim())) return alert("Category name already exists");
+      setFavoriteFolders(prev => prev.map(f => f.name === oldName ? { ...f, name: newName.trim() } : f));
+    }
+  };
+
+  const toggleItemInFolder = (itemId: string, folderName: string) => {
+     setFavoriteFolders(prev => prev.map(f => {
+       if (f.name === folderName) {
+         const exists = f.items.includes(itemId);
+         return { ...f, items: exists ? f.items.filter(id => id !== itemId) : [...f.items, itemId] };
+       }
+       return f;
+     }));
+  };
+
+  const handleClearFavorites = () => {
+    if (window.confirm(t.deleteFavoritesConfirm)) {
+      setFavorites([]);
+      setFavoriteFolders([]);
+    }
+  };
 
   const toggleFavorite = (favId: string) => {
     setFavorites(prev => prev.includes(favId) ? prev.filter(id => id !== favId) : [...prev, favId]);
@@ -604,7 +707,7 @@ export default function App() {
     if (iptvMode === 'xtream' && xtreamUrl && xtreamUser && xtreamPass) {
       // If already marked as logged in, restore immediately without waiting for network
       if (localStorage.getItem('doggy_iptv_logged') === 'true') {
-        setIsIptvLogged(true);
+        setIsIptvLogged(true); loadFromCloud();
       }
       // Always refresh channel data in background
       handleXtreamLogin(true);
@@ -1962,7 +2065,7 @@ export default function App() {
       }
       if (searchLower && !s.name.toLowerCase().includes(searchLower)) return false;
       return true;
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }, [iptvMode, iptvType, iptvStreams, iptvMovies, iptvSeries, selectedCategoryId, favorites, iptvSearch]);
 
   return (
@@ -2283,7 +2386,7 @@ export default function App() {
             {/* IPTV Overlay On-Screen Display */}
             {showIptvOverlay && sidebarMode === 'iptv' && (
                <div 
-                 className="absolute top-0 left-0 bottom-16 w-3/4 max-w-[700px] min-w-[400px] bg-theme-bg/95 backdrop-blur-xl border-r border-theme-border/50 z-[60] flex flex-col shadow-[20px_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in slide-in-from-left duration-300"
+                 className="absolute top-0 left-0 bottom-16 w-3/4 max-w-[700px] min-w-[400px] bg-theme-bg/10 backdrop-blur-md border-r border-theme-border/50 z-[60] flex flex-col shadow-[20px_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in slide-in-from-left duration-300"
                  onMouseLeave={() => setShowIptvOverlay(false)}
                  onMouseDown={(e) => e.stopPropagation()}
                  onMouseUp={(e) => e.stopPropagation()}
@@ -2291,7 +2394,7 @@ export default function App() {
                  onDoubleClick={(e) => e.stopPropagation()}
                >
                   {/* Top Bar */}
-                  <div className="flex p-3 gap-2 border-b border-theme-border/50 bg-theme-bg-secondary/40 items-center justify-between shrink-0">
+                  <div className="flex p-3 gap-2 border-b border-theme-border/50 bg-black/20 backdrop-blur-md items-center justify-between shrink-0">
                      <div className="flex gap-2 w-1/2">
                         {(['live', 'movie', 'series'] as const).map(type => (
                            <button 
@@ -2311,7 +2414,7 @@ export default function App() {
                            onChange={e => setIptvSearch(e.target.value)} 
                            onMouseDown={(e) => e.stopPropagation()} 
                            placeholder="Search..." 
-                           className="w-full bg-theme-bg border border-theme-border/50 rounded-full pl-8 pr-3 py-1.5 text-xs outline-none focus:border-theme-accent text-theme-text" 
+                           className="w-full bg-black/20 border border-white/10 rounded-full pl-8 pr-3 py-1.5 text-xs outline-none focus:border-theme-accent text-theme-text" 
                         />
                      </div>
                      <button onClick={(e) => { e.stopPropagation(); setShowIptvOverlay(false); }} className="p-1.5 rounded-full text-theme-text-muted hover:text-white hover:bg-theme-bg-tertiary transition-colors ml-2 shrink-0">
@@ -2322,16 +2425,16 @@ export default function App() {
                   {/* Body */}
                   <div className="flex flex-1 overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
                      {/* Categories */}
-                     <div className="w-1/3 border-r border-theme-border/50 overflow-y-auto bg-black/40">
+                     <div className="w-1/3 border-r border-theme-border overflow-y-auto bg-theme-bg z-10">
                         <div 
                            onClick={(e) => { e.stopPropagation(); setSelectedCategoryId('all'); }}
-                           className={`p-3 text-xs border-b border-theme-border/20 cursor-pointer font-bold ${selectedCategoryId === 'all' ? 'text-theme-accent bg-theme-bg/80 border-l-4 border-l-theme-accent shadow-inner' : 'text-theme-text/70 hover:text-theme-text hover:bg-theme-bg/40'}`}
+                           className={`p-3 text-xs border-b border-theme-border/20 cursor-pointer font-bold ${selectedCategoryId === 'all' ? 'text-theme-accent bg-theme-accent/20 border-l-4 border-l-theme-accent shadow-inner' : 'text-theme-text/70 hover:text-theme-text hover:bg-theme-bg/40'}`}
                         >
                            All Categories
                         </div>
                         <div 
                            onClick={(e) => { e.stopPropagation(); setSelectedCategoryId('favorites'); }}
-                           className={`p-3 text-xs border-b border-theme-border/20 cursor-pointer font-bold flex items-center gap-2 ${selectedCategoryId === 'favorites' ? 'text-theme-accent bg-theme-bg/80 border-l-4 border-l-theme-accent shadow-inner' : 'text-theme-text/70 hover:text-theme-text hover:bg-theme-bg/40'}`}
+                           className={`p-3 text-xs border-b border-theme-border/20 cursor-pointer font-bold flex items-center gap-2 ${selectedCategoryId === 'favorites' ? 'text-theme-accent bg-theme-accent/20 border-l-4 border-l-theme-accent shadow-inner' : 'text-theme-text/70 hover:text-theme-text hover:bg-theme-bg/40'}`}
                         >
                            <Heart size={14} className={selectedCategoryId === 'favorites' ? "fill-red-500 text-red-500" : "text-red-500/50"} /> Favorites
                         </div>
@@ -2346,7 +2449,7 @@ export default function App() {
                         ))}
                      </div>
                      {/* Channels */}
-                     <div className="flex-1 overflow-y-auto bg-theme-bg/60 relative">
+                     <div className="flex-1 overflow-y-auto bg-transparent/0 relative">
                         <div className="flex flex-col p-2 gap-1.5 relative">
                            {filteredIptvItems.slice(0, iptvLimit).map(item => (
                               <div 
@@ -2355,20 +2458,18 @@ export default function App() {
                                     e.stopPropagation();
                                     if (iptvType === 'series') {
                                        fetchSeriesInfo(item);
-                                       setShowIptvOverlay(false);
                                     } else {
                                        const newItem = { id: `iptv-${iptvType}-${item.id}`, name: item.name, url: item.url };
                                        setPlaylist([newItem]);
                                        setCurrentIndex(0);
                                        setIsPlaying(true);
-                                       // Only auto-hide if playing a specific video
-                                       setShowIptvOverlay(false);
+                                       // Panel stays open per user request
                                     }
                                  }} 
                                  id={`osd-channel-${btoa(item.url || '').replace(/[^a-zA-Z0-9]/g, '')}`}
-                                 className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all border ${videoSrc === item.url ? 'bg-theme-accent/20 border-l-[3px] border-l-theme-accent shadow-lg shadow-theme-accent/20 scale-[1.02]' : 'border-transparent border-l-[3px] border-l-transparent hover:border-theme-border/30 hover:bg-theme-bg-tertiary'}`}
-                              >
-                                 <div className="w-12 h-8 shrink-0 bg-black/50 rounded flex items-center justify-center p-0.5 overflow-hidden">
+                                  className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all border ${videoSrc === item.url ? 'bg-theme-accent/20 border-l-[3px] border-l-theme-accent shadow-lg shadow-theme-accent/20 scale-[1.02]' : 'border-transparent border-l-[3px] border-l-transparent hover:border-theme-border/30 hover:bg-white/5 backdrop-blur-sm'}`}
+                               >
+                                     <div className="w-12 h-8 shrink-0 bg-black/50 rounded flex items-center justify-center p-0.5 overflow-hidden">
                                      <img src={item.icon} alt="" className="max-w-full max-h-full object-contain" onError={(e) => { (e.target as any).style.display = 'none'; }} />
                                  </div>
                                  <div className="flex flex-col flex-1 min-w-0">
@@ -2381,11 +2482,11 @@ export default function App() {
                                     })()}
                                  </div>
                                  <button
-                                   onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
+                                   onClick={(e) => { e.stopPropagation(); toggleFavorite(`${iptvType}-${item.id}`); }}
                                    className="p-1.5 rounded-full hover:bg-theme-bg transition-colors group/fav z-10 shrink-0"
                                    title="Toggle Favorite"
                                  >
-                                    <Heart size={14} className={`transition-colors ${favorites.includes(item.id) ? "fill-red-500 text-red-500" : "text-theme-text-muted/30 group-hover/fav:text-red-500/50"}`} />
+                                     <Heart size={14} className={`transition-colors ${favorites.includes(`${iptvType}-${item.id}`) ? "fill-red-500 text-red-500" : "text-theme-text-muted/30 group-hover/fav:text-red-500/50"}`} />
                                  </button>
                                  {videoSrc === item.url && <div className="w-1.5 h-1.5 shrink-0 rounded-full bg-theme-accent ml-1 shadow-[0_0_8px_rgba(var(--theme-accent),0.8)]" />}
                               </div>
@@ -2522,24 +2623,24 @@ export default function App() {
           <div className="flex items-center gap-4">
             {/* Network Status */}
             <div className="relative flex items-center group/network">
-              <button className="text-theme-text hover:text-[#00d0ff] transition-colors" title="Network Status">
+              <button className="text-theme-text hover:text-theme-accent transition-colors" title="Network Status">
                 <Activity size={20} />
               </button>
               
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[280px] bg-[#1a1c23] border border-white/10 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 opacity-0 pointer-events-none group-hover/network:opacity-100 group-hover/network:pointer-events-auto transition-all duration-300 translate-y-2 group-hover/network:translate-y-0 p-5">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[280px] bg-theme-bg/40 backdrop-blur-xl border border-white/10 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 opacity-0 pointer-events-none group-hover/network:opacity-100 group-hover/network:pointer-events-auto transition-all duration-300 translate-y-2 group-hover/network:translate-y-0 p-5">
                 <div className="flex items-center gap-2 mb-6">
-                  <div className="p-1.5 bg-[#00d0ff]/20 rounded-md">
-                     <Activity size={18} className="text-[#00d0ff]" />
+                  <div className="p-1.5 bg-theme-accent/20 rounded-md">
+                     <Activity size={18} className="text-theme-accent" />
                   </div>
                   <span className="font-bold text-white text-[15px] tracking-wide">Network Status</span>
                 </div>
                 
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Latency</span>
-                  <span className="text-sm font-bold text-[#00d0ff]">{networkPing} ms</span>
+                  <span className="text-sm font-bold text-theme-accent">{networkPing} ms</span>
                 </div>
                 <div className="w-full h-1.5 bg-neutral-800 rounded-full mb-6 overflow-hidden">
-                  <div className="h-full bg-[#00d0ff] transition-all duration-500 ease-out shadow-[0_0_10px_rgba(0,208,255,0.8)]" style={{ width: `${Math.max(10, 100 - (networkPing * 1.5))}%` }}></div>
+                  <div className="h-full bg-theme-accent transition-all duration-500 ease-out shadow-[0_0_10px_var(--theme-accent)]" style={{ width: `${Math.max(10, 100 - (networkPing * 1.5))}%` }}></div>
                 </div>
 
                 <div className="flex gap-3">
@@ -2552,7 +2653,7 @@ export default function App() {
                   </div>
                   <div className="flex-1 bg-black/40 rounded-xl p-3 border border-white/5 flex flex-col justify-center shadow-inner">
                     <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 mb-1 drop-shadow-sm">Type</span>
-                    <span className="text-sm font-bold text-white leading-none capitalize truncate">{((navigator as any).connection?.effectiveType || (navigator as any).connection?.type || 'Ethernet')}</span>
+                    <span className="text-sm font-bold text-white leading-none capitalize truncate">{networkType}</span>
                   </div>
                 </div>
               </div>
@@ -2812,10 +2913,10 @@ export default function App() {
       </div>
       
       {/* Playlist & IPTV Sidebar (Redesigned) */}
-      <div className={`bg-theme-bg-secondary flex shrink-0 z-20 transition-all duration-300 ease-in-out overflow-hidden ${(showPlaylist && !isFullscreen) ? 'w-[320px] border-l border-theme-border' : 'w-0 border-none'}`}>
+      <div className={`bg-theme-bg-secondary/40 backdrop-blur-xl flex shrink-0 z-20 transition-all duration-300 ease-in-out overflow-hidden ${(showPlaylist && !isFullscreen) ? 'w-[320px] border-l border-theme-border' : 'w-0 border-none'}`}>
         
         {/* Pro Sidebar - Vertical icon bar */}
-        <div className="w-16 border-r border-theme-border flex flex-col items-center py-6 gap-6 bg-theme-bg shrink-0">
+        <div className="w-16 border-r border-theme-border flex flex-col items-center py-6 gap-6 bg-theme-bg/40 backdrop-blur-md shrink-0">
           <div 
             onClick={() => {
               if (sidebarMode === 'files' && showPlaylist) setShowPlaylist(false);
@@ -2824,7 +2925,7 @@ export default function App() {
                 setShowPlaylist(true);
               }
             }}
-            className={`cursor-pointer transition-colors p-2 rounded-lg ${sidebarMode === 'files' ? 'text-theme-accent bg-theme-bg-tertiary' : 'text-theme-text-muted hover:text-theme-text'}`}
+            className={`cursor-pointer transition-colors p-2 rounded-lg ${sidebarMode === 'files' ? 'text-theme-accent bg-white/5 backdrop-blur-sm' : 'text-theme-text-muted hover:text-theme-text'}`}
             title={t.files}
           >
             <FileVideo size={24} />
@@ -2837,7 +2938,7 @@ export default function App() {
                 setShowPlaylist(true);
               }
             }}
-            className={`cursor-pointer transition-colors p-2 rounded-lg ${sidebarMode === 'iptv' ? 'text-theme-accent bg-theme-bg-tertiary' : 'text-theme-text-muted hover:text-theme-text'}`}
+            className={`cursor-pointer transition-colors p-2 rounded-lg ${sidebarMode === 'iptv' ? 'text-theme-accent bg-white/5 backdrop-blur-sm' : 'text-theme-text-muted hover:text-theme-text'}`}
             title={t.iptv}
           >
             <Monitor size={24} />
@@ -2878,9 +2979,9 @@ export default function App() {
                         setZoomRect(null);
                         setZoomState({ scale: 1, tx: 0, ty: 0, vcX: 50, vcY: 50 });
                       }}
-                      className={`p-3 rounded-lg cursor-pointer text-sm truncate transition-all flex items-center gap-3 group ${idx === currentIndex && sidebarMode === 'files' ? 'bg-theme-primary text-theme-primary-text font-medium shadow-md' : 'hover:bg-theme-bg-tertiary text-theme-text-muted'}`}
+                      className={`p-3 rounded-lg cursor-pointer text-sm truncate transition-all flex items-center gap-3 group ${idx === currentIndex && sidebarMode === 'files' ? 'bg-theme-primary text-theme-primary-text font-medium shadow-md' : 'hover:bg-white/5 backdrop-blur-sm text-theme-text-muted'}`}
                     >
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs ${idx === currentIndex && sidebarMode === 'files' ? 'bg-black/20' : 'bg-theme-bg-tertiary group-hover:bg-theme-border'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs ${idx === currentIndex && sidebarMode === 'files' ? 'bg-black/20' : 'bg-white/5 backdrop-blur-sm group-hover:bg-theme-border'}`}>
                         {idx === currentIndex && sidebarMode === 'files' && isPlaying ? <Play size={10} className="ml-0.5" /> : idx + 1}
                       </div>
                       <span className="truncate">{item.name}</span>
@@ -2899,7 +3000,7 @@ export default function App() {
                         <button
                           key={mode}
                           onClick={() => setIptvMode(mode)}
-                          className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${iptvMode === mode ? 'bg-theme-accent text-black shadow-sm' : 'text-theme-text-muted hover:text-theme-text hover:bg-theme-bg-tertiary'}`}
+                          className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${iptvMode === mode ? 'bg-theme-accent text-black shadow-sm' : 'text-theme-text-muted hover:text-theme-text hover:bg-white/5 backdrop-blur-sm'}`}
                         >
                           {mode}
                         </button>
@@ -2960,13 +3061,13 @@ export default function App() {
                         <div className="flex bg-theme-bg border border-theme-border rounded-lg p-0.5">
                           <button
                             onClick={() => setM3uSubMode('playlist')}
-                            className={`flex-1 py-2 text-[10px] font-black uppercase rounded-md transition-all ${m3uSubMode === 'playlist' ? 'bg-theme-bg-tertiary text-theme-text shadow-sm' : 'text-theme-text-muted hover:text-theme-text'}`}
+                            className={`flex-1 py-2 text-[10px] font-black uppercase rounded-md transition-all ${m3uSubMode === 'playlist' ? 'bg-white/5 backdrop-blur-sm text-theme-text shadow-sm' : 'text-theme-text-muted hover:text-theme-text'}`}
                           >
                             📋 Playlist
                           </button>
                           <button
                             onClick={() => setM3uSubMode('stream')}
-                            className={`flex-1 py-2 text-[10px] font-black uppercase rounded-md transition-all ${m3uSubMode === 'stream' ? 'bg-theme-bg-tertiary text-theme-text shadow-sm' : 'text-theme-text-muted hover:text-theme-text'}`}
+                            className={`flex-1 py-2 text-[10px] font-black uppercase rounded-md transition-all ${m3uSubMode === 'stream' ? 'bg-white/5 backdrop-blur-sm text-theme-text shadow-sm' : 'text-theme-text-muted hover:text-theme-text'}`}
                           >
                             ▶ Stream URL
                           </button>
@@ -3013,7 +3114,7 @@ export default function App() {
                         <button 
                           key={type}
                           onClick={() => setIptvType(type)}
-                          className={`flex-1 py-2 text-[10px] font-black rounded uppercase transition-all ${iptvType === type ? 'bg-theme-accent text-black shadow-lg scale-105' : 'bg-theme-bg-tertiary text-theme-text-muted hover:text-theme-text'}`}
+                          className={`flex-1 py-2 text-[10px] font-black rounded uppercase transition-all ${iptvType === type ? 'bg-theme-accent text-black shadow-lg scale-105' : 'bg-white/5 backdrop-blur-sm text-theme-text-muted hover:text-theme-text'}`}
                         >
                           {type}
                         </button>
@@ -3046,29 +3147,113 @@ export default function App() {
                        </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto px-2 space-y-1 scroll-smooth py-2">
-                       <div 
-                          onClick={() => setSelectedCategoryId('all')}
-                          className={`iptv-category-item ${selectedCategoryId === 'all' ? 'active' : ''}`}
-                       >
-                          All Categories
-                       </div>
-                       <div 
-                          onClick={() => setSelectedCategoryId('favorites')}
-                          className={`iptv-category-item ${selectedCategoryId === 'favorites' ? 'active' : ''} flex items-center gap-2`}
-                       >
-                          <Heart size={14} className={selectedCategoryId === 'favorites' ? "fill-current text-theme-accent" : "text-theme-text-muted"} /> Favorites
-                       </div>
-                       {iptvCategories.map(cat => (
-                          <div 
-                             key={cat.id} 
-                             onClick={() => setSelectedCategoryId(cat.id)}
-                             className={`iptv-category-item ${selectedCategoryId === cat.id ? 'active' : ''}`}
-                          >
-                             {cat.name}
+                     <div className="flex-1 overflow-y-auto px-2 space-y-0.5 scroll-smooth py-2">
+                        {/* Favorites accordion */}
+                        <div 
+                           onClick={() => setSelectedCategoryId(selectedCategoryId === 'favorites' ? '' : 'favorites')}
+                           className={`iptv-category-item flex items-center justify-between ${selectedCategoryId === 'favorites' ? 'active' : ''}`}
+                        >
+                           <span className="flex items-center gap-2"><Heart size={12} className={selectedCategoryId === 'favorites' ? "fill-red-500 text-red-500" : "text-red-400"} /> Favorites</span>
+                           <ChevronDown size={12} className={`transition-transform ${selectedCategoryId === 'favorites' ? 'rotate-180' : ''}`} />
+                        </div>
+
+                         {selectedCategoryId === 'favorites' && (
+                          <div className="ml-2 mb-1 space-y-0.5 border-l-2 border-red-500/30 pl-2 py-2">
+                             <div className="flex items-center justify-between px-2 mb-2 pb-2 border-b border-white/5">
+                                <span className="text-[9px] font-black text-red-500/60 uppercase tracking-widest">Favoriter</span>
+                                <button onClick={createFavoriteFolder} className="p-1 hover:bg-white/5 rounded text-theme-text-muted hover:text-white transition-colors" title="Ny Kategori">
+                                  <FolderPlus size={14} />
+                                </button>
+                             </div>
+
+                             {/* Allmänna favoriter */}
+                             {favorites.length > 0 && (
+                               <div className="mb-4">
+                                 <div className="text-[9px] text-theme-text-muted px-2 py-1 font-black uppercase tracking-widest opacity-40 mb-1">Standard</div>
+                                 {iptvStreams.concat(iptvMovies).concat(iptvSeries).filter(item => favorites.includes(`${iptvType}-${item.id}`)).map(item => (
+                                   <div key={item.id} onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
+                                     className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5'}`}>
+                                     <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounded" onError={(e)=>{ (e.target as any).style.display='none'; }} />
+                                     <span className="truncate flex-1">{item.name}</span>
+                                     <button onClick={(e)=>{ e.stopPropagation(); toggleFavorite(`${iptvType}-${item.id}`); }} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <Heart size={10} className="fill-red-500 text-red-500" />
+                                     </button>
+                                   </div>
+                                 ))}
+                               </div>
+                             )}
+
+                             {/* Egna Kategorier */}
+                             {favoriteFolders.map((folder, fIdx) => (
+                               <div key={folder.name} className="mb-4">
+                                 <div className="flex items-center justify-between group/f px-2 py-1 mb-1 border-b border-white/5">
+                                   <div className="flex items-center gap-1.5 text-[9px] font-black text-theme-accent uppercase tracking-widest truncate">
+                                     <FolderOpen size={11} className="text-theme-accent/70" /> {folder.name}
+                                   </div>
+                                   <div className="flex items-center gap-1 opacity-0 group-hover/f:opacity-100 transition-opacity">
+                                      <button onClick={(e) => { e.stopPropagation(); renameFavoriteFolder(folder.name); }} className="p-0.5 hover:text-white text-theme-text-muted transition-colors"><Edit3 size={11} /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); deleteFavoriteFolder(folder.name); }} className="p-0.5 hover:text-red-400 text-theme-text-muted transition-colors"><Trash2 size={11} /></button>
+                                   </div>
+                                 </div>
+                                 {iptvStreams.concat(iptvMovies).concat(iptvSeries).filter(item => folder.items.includes(`${iptvType}-${item.id}`)).map(item => (
+                                   <div key={item.id} onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
+                                     className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5'}`}>
+                                     <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounded" onError={(e)=>{ (e.target as any).style.display='none'; }} />
+                                     <span className="truncate flex-1">{item.name}</span>
+                                     <button onClick={(e)=>{ e.stopPropagation(); toggleItemInFolder(`${iptvType}-${item.id}`, folder.name); }} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <Heart size={10} className="fill-theme-accent text-theme-accent" />
+                                     </button>
+                                   </div>
+                                 ))}
+                                 {folder.items.length === 0 && <p className="text-[9px] text-theme-text-muted/40 px-2 italic">Tom kategori</p>}
+                               </div>
+                             ))}
+                             
+                             {favorites.length === 0 && favoriteFolders.length === 0 && (
+                               <p className="text-[10px] text-theme-text-muted px-2 py-4 italic text-center">Inga sparade favoriter eller kategorier</p>
+                             )}
                           </div>
-                       ))}
-                    </div>
+                        )}
+
+                        {/* Per-category accordions */}
+                        {iptvCategories.map(cat => {
+                          const isOpen = selectedCategoryId === cat.id;
+                          const list = iptvMode==='m3u' ? iptvStreams : (iptvType==='live' ? iptvStreams : iptvType==='movie' ? iptvMovies : iptvSeries);
+                          const catItems = list.filter(s => s.category_id===cat.id && (!iptvSearch || s.name.toLowerCase().includes(iptvSearch.toLowerCase()))).sort((a,b)=>a.name.localeCompare(b.name));
+                          return (
+                            <div key={cat.id}>
+                              <div onClick={() => setSelectedCategoryId(isOpen ? '' : cat.id)}
+                                className={`iptv-category-item flex items-center justify-between ${isOpen ? 'active' : ''}`}>
+                                <span className="truncate">{cat.name}</span>
+                                <span className="flex items-center gap-1.5 shrink-0 ml-1">
+                                  {catItems.length > 0 && <span className="text-[9px] bg-white/5 backdrop-blur-sm rounded-full px-1.5 py-0.5 font-bold text-theme-text-muted">{catItems.length}</span>}
+                                  <ChevronDown size={12} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                                </span>
+                              </div>
+                              {isOpen && (
+                                <div className="ml-2 mb-1 space-y-0.5 border-l-2 border-theme-accent/30 pl-2 max-h-96 overflow-y-auto">
+                                  {catItems.length === 0
+                                    ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">Inga kanaler</p>
+                                    : catItems.slice(0, iptvLimit).map(item => (
+                                      <div key={item.id} onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
+                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5 backdrop-blur-sm'}`}>
+                                        <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounded" onError={(e)=>{ (e.target as any).style.display='none'; }} />
+                                        <span className="truncate flex-1">{item.name}</span>
+                                        <button onClick={(e)=>{ e.stopPropagation(); toggleFavorite(`${iptvType}-${item.id}`); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                          <Heart size={10} className={favorites.includes(`${iptvType}-${item.id}`) ? "fill-red-500 text-red-500" : "text-white/40 hover:text-red-400"} />
+                                        </button>
+                                        <button onClick={(e)=>{ e.stopPropagation(); setMoveMenu({ id: `${iptvType}-${item.id}`, x: e.clientX, y: e.clientY }); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                                          <FolderPlus size={10} className="text-white/40 hover:text-theme-accent shadow-sm" />
+                                        </button>
+                                      </div>
+                                    ))
+                                  }
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                     </div>
                   </div>
                 )}
               </div>
@@ -3456,6 +3641,50 @@ export default function App() {
                     {isGenerating ? "Sparar..." : "Save Code"}
                  </button>
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move to Folder Menu */}
+      {moveMenu && (
+        <div 
+          className="fixed inset-0 z-[100]" 
+          onClick={() => setMoveMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setMoveMenu(null); }}
+        >
+          <div 
+            className="absolute bg-theme-bg border border-theme-border rounded-lg shadow-2xl py-2 min-w-[200px] animate-in zoom-in-95 duration-150"
+            style={{ left: Math.min(moveMenu.x, window.innerWidth - 220), top: Math.min(moveMenu.y, window.innerHeight - 250) }}
+          >
+            <div className="px-4 py-2 border-b border-theme-border mb-1">
+              <span className="text-[10px] font-black text-theme-text-muted uppercase tracking-widest">Kategorier</span>
+            </div>
+            {favoriteFolders.length === 0 && (
+              <div className="px-4 py-3 text-[10px] text-theme-text-muted italic">Inga kategorier skapade</div>
+            )}
+            <div className="max-h-60 overflow-y-auto">
+              {favoriteFolders.map(folder => {
+                const isInFolder = folder.items.includes(moveMenu.id);
+                return (
+                  <button
+                    key={folder.name}
+                    onClick={(e) => { e.stopPropagation(); toggleItemInFolder(moveMenu.id, folder.name); setMoveMenu(null); }}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-theme-accent hover:text-black transition-colors flex items-center justify-between group"
+                  >
+                    <span className="flex items-center gap-2 truncate pr-2"><FolderOpen size={14} className="opacity-50 group-hover:opacity-100 shrink-0" /> {folder.name}</span>
+                    {isInFolder && <Check size={14} className="shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="border-t border-theme-border mt-1 pt-1">
+               <button
+                  onClick={(e) => { e.stopPropagation(); setMoveMenu(null); createFavoriteFolder(); }}
+                  className="w-full text-left px-4 py-2 text-xs text-theme-accent hover:bg-theme-accent/10 transition-colors flex items-center gap-2"
+               >
+                 <FolderPlus size={14} /> Ny kategori...
+               </button>
+            </div>
           </div>
         </div>
       )}

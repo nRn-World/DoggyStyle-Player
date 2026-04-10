@@ -149,7 +149,7 @@
 }
 
 .iptv-sidebar-item:hover, .iptv-sidebar-item.active {
-  background: var(--theme-bg-tertiary);
+  background: rgba(255,255,255,0.1);
   color: var(--theme-accent);
 }
 
@@ -167,7 +167,8 @@
 }
 
 .iptv-category-item:hover, .iptv-category-item.active {
-  background: var(--theme-bg-tertiary);
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(4px);
   color: white;
 }
 

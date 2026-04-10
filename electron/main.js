@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
+import os from 'os';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import path from 'path';
@@ -155,6 +156,33 @@ ipcMain.handle('iptv-fetch', async (event, url, options = {}) => {
   } catch (error) {
     console.error('IPTV Fetch Error:', error.message);
     throw error;
+  }
+});
+
+ipcMain.handle('get-network-info', async () => {
+  try {
+    const interfaces = os.networkInterfaces();
+    let type = 'Ethernet';
+    
+    // Most reliable order: check for Cellular -> Wifi -> LAN
+    for (const [name, info] of Object.entries(interfaces)) {
+      const active = info.some(i => !i.internal && (i.family === 'IPv4' || i.family === 'IPv6') && i.address !== '127.0.0.1' && !i.address.startsWith('169.254'));
+      if (active) {
+        const lowerName = name.toLowerCase();
+        if (lowerName.includes('wi-fi') || lowerName.includes('wireless') || lowerName.includes('wlan')) {
+          return 'Wifi';
+        }
+        if (lowerName.includes('ethernet') || lowerName.includes('lan') || lowerName.includes('en0')) {
+          type = 'LAN';
+        }
+        if (lowerName.includes('cellular') || lowerName.includes('4g') || lowerName.includes('5g') || lowerName.includes('wwan')) {
+          return '4G/5G';
+        }
+      }
+    }
+    return type;
+  } catch (error) {
+    return 'Ethernet';
   }
 });
 

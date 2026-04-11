@@ -602,20 +602,33 @@ export default function App() {
   const [isSeriesInfoLoading, setIsSeriesInfoLoading] = useState(false);
   const [showIptvOverlay, setShowIptvOverlay] = useState(false);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
-  interface FavoriteFolder { name: string; items: string[]; }
+  interface FavoriteFolder { name: string; items: string[]; color?: string; }
   const [favorites, setFavorites] = useState<string[]>(() => JSON.parse(localStorage.getItem('doggy_iptv_favorites') || '[]'));
-  const [favoriteFolders, setFavoriteFolders] = useState<FavoriteFolder[]>(() => JSON.parse(localStorage.getItem('doggy_iptv_folders') || '[]'));
+  const [favoriteFolders, setFavoriteFolders] = useState<FavoriteFolder[]>(() => {
+    const saved = localStorage.getItem('doggy_iptv_folders');
+    const folders = saved ? JSON.parse(saved) : [];
+    // Migrate: ensure all have a color
+    return folders.map((f: any) => ({ ...f, color: f.color || '#ff4b4b' }));
+  });
   const [isSyncing, setIsSyncing] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [promptTitle, setPromptTitle] = useState("");
   const [promptValue, setPromptValue] = useState("");
+  const [promptColor, setPromptColor] = useState("#ff4b4b");
   const [promptPlaceholder, setPromptPlaceholder] = useState("");
-  const [onPromptConfirm, setOnPromptConfirm] = useState<((val: string) => void) | null>(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [onPromptConfirm, setOnPromptConfirm] = useState<((val: string, col: string) => void) | null>(null);
 
-  const showPrompt = (title: string, defaultValue: string, placeholder: string, callback: (val: string) => void) => {
+  const predefinedColors = [
+    '#ff4b4b', '#ff8c4b', '#ffdc4b', '#4bff8c', '#4bdcff', '#4b8cff', '#8c4bff', '#dc4bff'
+  ];
+
+  const showPrompt = (title: string, defaultValue: string, defaultColor: string, placeholder: string, hasColor: boolean, callback: (val: string, col: string) => void) => {
     setPromptTitle(title);
     setPromptValue(defaultValue);
+    setPromptColor(defaultColor || '#ff4b4b');
     setPromptPlaceholder(placeholder);
+    setShowColorPicker(hasColor);
     setOnPromptConfirm(() => callback);
     setShowPromptModal(true);
   };
@@ -708,13 +721,13 @@ export default function App() {
 
   
   const createFavoriteFolder = () => {
-    showPrompt(t.enterCategoryName, "", "Category Name...", (name) => {
+    showPrompt(t.enterCategoryName, "", "#ff4b4b", "Category Name...", true, (name, color) => {
       if (name && name.trim()) {
         if (favoriteFolders.some(f => f.name === name.trim())) {
           alert(t.categoryExists);
           return;
         }
-        setFavoriteFolders(prev => [...prev, { name: name.trim(), items: [] }]);
+        setFavoriteFolders(prev => [...prev, { name: name.trim(), items: [], color }]);
       }
     });
   };
@@ -725,14 +738,10 @@ export default function App() {
     }
   };
 
-  const renameFavoriteFolder = (oldName: string) => {
-    showPrompt(t.enterNewName, oldName, "New Name...", (newName) => {
-      if (newName && newName.trim() && newName !== oldName) {
-        if (favoriteFolders.some(f => f.name === newName.trim())) {
-          alert(t.categoryNameExists);
-          return;
-        }
-        setFavoriteFolders(prev => prev.map(f => f.name === oldName ? { ...f, name: newName.trim() } : f));
+  const renameFavoriteFolder = (folder: FavoriteFolder) => {
+    showPrompt(t.enterNewName, folder.name, folder.color || '#ff4b4b', "New Name...", true, (newName, newColor) => {
+      if ((newName && newName.trim()) || newColor !== folder.color) {
+        setFavoriteFolders(prev => prev.map(f => f.name === folder.name ? { ...f, name: newName.trim() || f.name, color: newColor } : f));
       }
     });
   };
@@ -2689,43 +2698,45 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Network Status */}
-            <div className="relative flex items-center group/network">
-              <button className="text-theme-text hover:text-theme-accent transition-colors" title="Network Status">
-                <Activity size={20} />
-              </button>
-              
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[280px] bg-theme-bg/40 backdrop-blur-xl border border-white/10 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 opacity-0 pointer-events-none group-hover/network:opacity-100 group-hover/network:pointer-events-auto transition-all duration-300 translate-y-2 group-hover/network:translate-y-0 p-5">
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="p-1.5 bg-theme-accent/20 rounded-md">
-                     <Activity size={18} className="text-theme-accent" />
-                  </div>
-                  <span className="font-bold text-white text-[15px] tracking-wide">Network Status</span>
-                </div>
+            {/* Network Status - Only for Live IPTV */}
+            {playlist[currentIndex]?.id?.includes('live') && (
+              <div className="relative flex items-center group/network">
+                <button className="text-theme-text hover:text-theme-accent transition-colors" title="Network Status">
+                  <Activity size={20} />
+                </button>
                 
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Latency</span>
-                  <span className="text-sm font-bold text-theme-accent">{networkPing} ms</span>
-                </div>
-                <div className="w-full h-1.5 bg-neutral-800 rounded-full mb-6 overflow-hidden">
-                  <div className="h-full bg-theme-accent transition-all duration-500 ease-out shadow-[0_0_10px_var(--theme-accent)]" style={{ width: `${Math.max(10, 100 - (networkPing * 1.5))}%` }}></div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex-1 bg-black/40 rounded-xl p-3 border border-white/5 flex flex-col justify-center shadow-inner">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 mb-1 drop-shadow-sm">Download</span>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-xl font-bold text-white leading-none">{((navigator as any).connection?.downlink || 142).toFixed(0)}</span>
-                      <span className="text-[10px] text-neutral-400 font-semibold">Mbps</span>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[280px] bg-theme-bg/40 backdrop-blur-xl border border-white/10 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 opacity-0 pointer-events-none group-hover/network:opacity-100 group-hover/network:pointer-events-auto transition-all duration-300 translate-y-2 group-hover/network:translate-y-0 p-5">
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="p-1.5 bg-theme-accent/20 rounded-md">
+                       <Activity size={18} className="text-theme-accent" />
                     </div>
+                    <span className="font-bold text-white text-[15px] tracking-wide">Network Status</span>
                   </div>
-                  <div className="flex-1 bg-black/40 rounded-xl p-3 border border-white/5 flex flex-col justify-center shadow-inner">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 mb-1 drop-shadow-sm">Type</span>
-                    <span className="text-sm font-bold text-white leading-none capitalize truncate">{networkType}</span>
+                  
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Latency</span>
+                    <span className="text-sm font-bold text-theme-accent">{networkPing} ms</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-neutral-800 rounded-full mb-6 overflow-hidden">
+                    <div className="h-full bg-theme-accent transition-all duration-500 ease-out shadow-[0_0_10_10px_var(--theme-accent)]" style={{ width: `${Math.max(10, 100 - (networkPing * 1.5))}%` }}></div>
+                  </div>
+  
+                  <div className="flex gap-3">
+                    <div className="flex-1 bg-black/40 rounded-xl p-3 border border-white/5 flex flex-col justify-center shadow-inner">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 mb-1 drop-shadow-sm">Download</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xl font-bold text-white leading-none">{((navigator as any).connection?.downlink || 142).toFixed(0)}</span>
+                        <span className="text-[10px] text-neutral-400 font-semibold">Mbps</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 bg-black/40 rounded-xl p-3 border border-white/5 flex flex-col justify-center shadow-inner">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 mb-1 drop-shadow-sm">Type</span>
+                      <span className="text-sm font-bold text-white leading-none capitalize truncate">{networkType}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="flex items-center gap-2 group">
               <button onClick={toggleMute} className="hover:text-theme-accent transition-colors">
@@ -3255,11 +3266,11 @@ export default function App() {
                              {favoriteFolders.map((folder, fIdx) => (
                                <div key={folder.name} className="mb-4">
                                  <div className="flex items-center justify-between group/f px-2 py-1 mb-1 border-b border-white/5">
-                                   <div className="flex items-center gap-1.5 text-[9px] font-black text-theme-accent uppercase tracking-widest truncate">
-                                     <FolderOpen size={11} className="text-theme-accent/70" /> {folder.name}
+                                   <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest truncate" style={{ color: folder.color || '#ff4b4b' }}>
+                                     <FolderOpen size={11} style={{ color: folder.color || '#ff4b4b' }} className="opacity-70" /> {folder.name}
                                    </div>
                                    <div className="flex items-center gap-1 opacity-0 group-hover/f:opacity-100 transition-opacity">
-                                      <button onClick={(e) => { e.stopPropagation(); renameFavoriteFolder(folder.name); }} className="p-0.5 hover:text-white text-theme-text-muted transition-colors"><Edit3 size={11} /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); renameFavoriteFolder(folder); }} className="p-0.5 hover:text-white text-theme-text-muted transition-colors"><Edit3 size={11} /></button>
                                       <button onClick={(e) => { e.stopPropagation(); deleteFavoriteFolder(folder.name); }} className="p-0.5 hover:text-red-400 text-theme-text-muted transition-colors"><Trash2 size={11} /></button>
                                    </div>
                                  </div>
@@ -3608,7 +3619,7 @@ export default function App() {
             </div>
 
             <div className="p-5 border-t border-theme-border text-center space-y-2">
-              <div className="text-xs text-theme-text-muted">{t.about} • {t.version} {(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1.36')}</div>
+              <div className="text-xs text-theme-text-muted">{t.about} • {t.version} {(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1.37')}</div>
               <div className="text-xs text-theme-text-muted">
                 Created 2026 by © nRn World<br/>
                 <div className="flex items-center justify-center gap-2 mt-1">
@@ -3772,7 +3783,7 @@ export default function App() {
                     onChange={(e) => setPromptValue(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
-                        onPromptConfirm?.(promptValue);
+                        onPromptConfirm?.(promptValue, promptColor);
                         setShowPromptModal(false);
                       } else if (e.key === 'Escape') {
                         setShowPromptModal(false);
@@ -3781,6 +3792,23 @@ export default function App() {
                     placeholder={promptPlaceholder}
                     className="w-full bg-theme-bg-secondary border border-theme-border rounded-lg px-4 py-3 text-sm text-theme-text focus:ring-2 focus:ring-theme-accent outline-none hover:border-theme-accent/50 transition-all font-medium" 
                  />
+
+                 {showColorPicker && (
+                   <div className="space-y-2">
+                     <p className="text-[10px] font-black uppercase text-theme-text-muted tracking-widest">Category Color</p>
+                     <div className="flex flex-wrap gap-2">
+                        {predefinedColors.map(color => (
+                          <button
+                            key={color}
+                            onClick={() => setPromptColor(color)}
+                            className={`w-8 h-8 rounded-full border-2 transition-transform active:scale-90 ${promptColor === color ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-105'}`}
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                     </div>
+                   </div>
+                 )}
+
                  <div className="flex gap-3 pt-2">
                     <button 
                       onClick={() => setShowPromptModal(false)}
@@ -3790,7 +3818,7 @@ export default function App() {
                     </button>
                     <button 
                       onClick={() => {
-                        onPromptConfirm?.(promptValue);
+                        onPromptConfirm?.(promptValue, promptColor);
                         setShowPromptModal(false);
                       }}
                       className="flex-1 bg-theme-accent hover:opacity-90 text-black font-black py-3 rounded-xl active:scale-95 transition-all text-xs uppercase shadow-lg shadow-theme-accent/20"

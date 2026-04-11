@@ -606,6 +606,19 @@ export default function App() {
   const [favorites, setFavorites] = useState<string[]>(() => JSON.parse(localStorage.getItem('doggy_iptv_favorites') || '[]'));
   const [favoriteFolders, setFavoriteFolders] = useState<FavoriteFolder[]>(() => JSON.parse(localStorage.getItem('doggy_iptv_folders') || '[]'));
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [promptTitle, setPromptTitle] = useState("");
+  const [promptValue, setPromptValue] = useState("");
+  const [promptPlaceholder, setPromptPlaceholder] = useState("");
+  const [onPromptConfirm, setOnPromptConfirm] = useState<((val: string) => void) | null>(null);
+
+  const showPrompt = (title: string, defaultValue: string, placeholder: string, callback: (val: string) => void) => {
+    setPromptTitle(title);
+    setPromptValue(defaultValue);
+    setPromptPlaceholder(placeholder);
+    setOnPromptConfirm(() => callback);
+    setShowPromptModal(true);
+  };
   const [moveMenu, setMoveMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -695,11 +708,15 @@ export default function App() {
 
   
   const createFavoriteFolder = () => {
-    const name = window.prompt(t.enterCategoryName);
-    if (name && name.trim()) {
-      if (favoriteFolders.some(f => f.name === name.trim())) return alert(t.categoryExists);
-      setFavoriteFolders(prev => [...prev, { name: name.trim(), items: [] }]);
-    }
+    showPrompt(t.enterCategoryName, "", "Category Name...", (name) => {
+      if (name && name.trim()) {
+        if (favoriteFolders.some(f => f.name === name.trim())) {
+          alert(t.categoryExists);
+          return;
+        }
+        setFavoriteFolders(prev => [...prev, { name: name.trim(), items: [] }]);
+      }
+    });
   };
 
   const deleteFavoriteFolder = (name: string) => {
@@ -709,11 +726,15 @@ export default function App() {
   };
 
   const renameFavoriteFolder = (oldName: string) => {
-    const newName = window.prompt(t.enterNewName, oldName);
-    if (newName && newName.trim() && newName !== oldName) {
-      if (favoriteFolders.some(f => f.name === newName.trim())) return alert(t.categoryNameExists);
-      setFavoriteFolders(prev => prev.map(f => f.name === oldName ? { ...f, name: newName.trim() } : f));
-    }
+    showPrompt(t.enterNewName, oldName, "New Name...", (newName) => {
+      if (newName && newName.trim() && newName !== oldName) {
+        if (favoriteFolders.some(f => f.name === newName.trim())) {
+          alert(t.categoryNameExists);
+          return;
+        }
+        setFavoriteFolders(prev => prev.map(f => f.name === oldName ? { ...f, name: newName.trim() } : f));
+      }
+    });
   };
 
   const toggleItemInFolder = (itemId: string, folderName: string) => {
@@ -3732,6 +3753,52 @@ export default function App() {
                  <FolderPlus size={14} /> Ny kategori...
                </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Custom Prompt Modal */}
+      {showPromptModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[150] flex items-center justify-center p-6">
+          <div className="bg-theme-bg border border-theme-border rounded-2xl w-full max-w-sm overflow-hidden flex flex-col relative shadow-2xl animate-in zoom-in-95 duration-200">
+             <div className="p-4 border-b border-theme-border flex items-center justify-between bg-theme-bg-secondary">
+               <h2 className="text-sm font-black uppercase text-theme-text-muted tracking-widest">{promptTitle}</h2>
+               <button onClick={() => setShowPromptModal(false)} className="text-theme-text-muted hover:text-theme-text transition-colors"><X size={18}/></button>
+             </div>
+             <div className="p-6 space-y-4">
+                 <input 
+                    autoFocus
+                    type="text" 
+                    value={promptValue} 
+                    onChange={(e) => setPromptValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        onPromptConfirm?.(promptValue);
+                        setShowPromptModal(false);
+                      } else if (e.key === 'Escape') {
+                        setShowPromptModal(false);
+                      }
+                    }}
+                    placeholder={promptPlaceholder}
+                    className="w-full bg-theme-bg-secondary border border-theme-border rounded-lg px-4 py-3 text-sm text-theme-text focus:ring-2 focus:ring-theme-accent outline-none hover:border-theme-accent/50 transition-all font-medium" 
+                 />
+                 <div className="flex gap-3 pt-2">
+                    <button 
+                      onClick={() => setShowPromptModal(false)}
+                      className="flex-1 bg-white/5 hover:bg-white/10 text-theme-text font-bold py-3 rounded-xl active:scale-95 transition-all text-xs uppercase"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={() => {
+                        onPromptConfirm?.(promptValue);
+                        setShowPromptModal(false);
+                      }}
+                      className="flex-1 bg-theme-accent hover:opacity-90 text-black font-black py-3 rounded-xl active:scale-95 transition-all text-xs uppercase shadow-lg shadow-theme-accent/20"
+                    >
+                      Confirm
+                    </button>
+                 </div>
+             </div>
           </div>
         </div>
       )}

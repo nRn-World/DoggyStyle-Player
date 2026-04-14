@@ -668,6 +668,30 @@ export default function App() {
     setShowPromptModal(true);
   };
   const [moveMenu, setMoveMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [draggedOverCategory, setDraggedOverCategory] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, catId: string) => {
+    e.preventDefault();
+    setDraggedOverCategory(catId);
+  };
+
+  const handleDragLeave = () => {
+    setDraggedOverCategory(null);
+  };
+
+  const handleDropToFolder = (e: React.DragEvent, folderName: string) => {
+    e.preventDefault();
+    setDraggedOverCategory(null);
+    const id = e.dataTransfer.getData('text/plain');
+    if (id) {
+      toggleItemInFolder(id, folderName, true);
+    }
+  };
 
   useEffect(() => {
     // Favorites handled by sync block
@@ -781,10 +805,11 @@ export default function App() {
     });
   };
 
-  const toggleItemInFolder = (itemId: string, folderName: string) => {
+  const toggleItemInFolder = (itemId: string, folderName: string, forceAdd = false) => {
      setFavoriteFolders(prev => prev.map(f => {
        if (f.name === folderName) {
          const exists = f.items.includes(itemId);
+         if (forceAdd && exists) return f;
          return { ...f, items: exists ? f.items.filter(id => id !== itemId) : [...f.items, itemId] };
        }
        return f;
@@ -2277,6 +2302,8 @@ export default function App() {
                     <div 
                       key={`${iptvType}-${item.id}`}
                       className="iptv-card group relative"
+                      draggable="true"
+                      onDragStart={(e) => handleDragStart(e, `${iptvType}-${item.id}`)}
                       onClick={() => {
                         if (iptvType === 'series') {
                           fetchSeriesInfo(item);
@@ -3250,8 +3277,6 @@ export default function App() {
                       ))}
                     </div>
 
-
-
                     <div className="p-3 bg-theme-bg/10">
                        <div className="relative mb-3">
                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-theme-text-muted" />
@@ -3280,9 +3305,17 @@ export default function App() {
                         {/* Favorites accordion */}
                         <div 
                            onClick={() => setSelectedCategoryId(selectedCategoryId === 'favorites' ? '' : 'favorites')}
-                           className={`iptv-category-item flex items-center justify-between ${selectedCategoryId === 'favorites' ? 'active' : ''}`}
+                           onDragOver={(e) => handleDragOver(e, 'favorites-root')}
+                           onDragLeave={handleDragLeave}
+                           onDrop={(e) => {
+                              e.preventDefault();
+                              setDraggedOverCategory(null);
+                              const id = e.dataTransfer.getData('text/plain');
+                              if (id && !favorites.includes(id)) toggleFavorite(id);
+                           }}
+                           className={`iptv-category-item flex items-center justify-between transition-all ${selectedCategoryId === 'favorites' ? 'active' : ''} ${draggedOverCategory === 'favorites-root' ? 'bg-red-500/10 border-red-500/50 scale-[1.02]' : ''}`}
                         >
-                           <span className="flex items-center gap-2"><Heart size={12} className={selectedCategoryId === 'favorites' ? "fill-red-500 text-red-500" : "text-red-400"} /> {t.favoritesLabel}</span>
+                           <span className="flex items-center gap-2"><Heart size={12} className={(selectedCategoryId === 'favorites' || draggedOverCategory === 'favorites-root') ? "fill-red-500 text-red-500" : "text-red-400"} /> {t.favoritesLabel}</span>
                            <ChevronDown size={12} className={`transition-transform ${selectedCategoryId === 'favorites' ? 'rotate-180' : ''}`} />
                         </div>
 
@@ -3300,7 +3333,11 @@ export default function App() {
                                <div className="mb-4">
                                  <div className="text-[9px] text-theme-text-muted px-2 py-1 font-black uppercase tracking-widest opacity-40 mb-1">{t.standardLabel}</div>
                                  {iptvStreams.concat(iptvMovies).concat(iptvSeries).filter(item => favorites.includes(`${iptvType}-${item.id}`)).map(item => (
-                                   <div key={item.id} onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
+                                   <div 
+                                     key={item.id} 
+                                     draggable="true"
+                                     onDragStart={(e) => handleDragStart(e, `${iptvType}-${item.id}`)}
+                                     onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
                                      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5'}`}>
                                      <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounded" onError={(e)=>{ (e.target as any).style.display='none'; }} />
                                      <span className="truncate flex-1">{item.name}</span>
@@ -3315,7 +3352,12 @@ export default function App() {
                              {/* Egna Kategorier */}
                              {favoriteFolders.map((folder, fIdx) => (
                                <div key={folder.name} className="mb-4">
-                                 <div className="flex items-center justify-between group/f px-2 py-1 mb-1 border-b border-white/5">
+                                 <div 
+                                    className={`flex items-center justify-between group/f px-2 py-1 mb-1 border-b border-white/5 transition-all ${draggedOverCategory === folder.name ? 'bg-theme-accent/20 rounded-md scale-105 border-theme-accent' : ''}`}
+                                    onDragOver={(e) => handleDragOver(e, folder.name)}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={(e) => handleDropToFolder(e, folder.name)}
+                                 >
                                    <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest truncate" style={{ color: folder.color || '#ff4b4b' }}>
                                      <FolderOpen size={11} style={{ color: folder.color || '#ff4b4b' }} className="opacity-70" /> {folder.name}
                                    </div>
@@ -3325,7 +3367,11 @@ export default function App() {
                                    </div>
                                  </div>
                                  {iptvStreams.concat(iptvMovies).concat(iptvSeries).filter(item => folder.items.includes(`${iptvType}-${item.id}`)).map(item => (
-                                   <div key={item.id} onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
+                                   <div 
+                                     key={item.id} 
+                                     draggable="true"
+                                     onDragStart={(e) => handleDragStart(e, `${iptvType}-${item.id}`)}
+                                     onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
                                      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5'}`}>
                                      <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounded" onError={(e)=>{ (e.target as any).style.display='none'; }} />
                                      <span className="truncate flex-1">{item.name}</span>
@@ -3364,7 +3410,11 @@ export default function App() {
                                   {catItems.length === 0
                                     ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
                                     : catItems.slice(0, iptvLimit).map(item => (
-                                      <div key={item.id} onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
+                                      <div 
+                                        key={item.id} 
+                                        draggable="true"
+                                        onDragStart={(e) => handleDragStart(e, `${iptvType}-${item.id}`)}
+                                        onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
                                         className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5 backdrop-blur-sm'}`}>
                                         <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounded" onError={(e)=>{ (e.target as any).style.display='none'; }} />
                                         <span className="truncate flex-1">{item.name}</span>
@@ -3376,6 +3426,47 @@ export default function App() {
                                         </button>
                                       </div>
                                     ))
+                                  }
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                     </div>
+                  </div>
+                        )}
+
+                        {/* Per-category accordions */}
+                        {iptvCategories.map(cat => {
+                          const isOpen = selectedCategoryId === cat.id;
+                          const list = iptvMode==='m3u' ? iptvStreams : (iptvType==='live' ? iptvStreams : iptvType==='movie' ? iptvMovies : iptvSeries);
+                          const catItems = list.filter(s => s.category_id===cat.id && (!iptvSearch || s.name.toLowerCase().includes(iptvSearch.toLowerCase()))).sort((a,b)=>a.name.localeCompare(b.name));
+                          return (
+                            <div key={cat.id}>
+                              <div onClick={() => setSelectedCategoryId(isOpen ? '' : cat.id)}
+                                className={`iptv-category-item flex items-center justify-between ${isOpen ? 'active' : ''}`}>
+                                <span className="truncate">{cat.name}</span>
+                                <span className="flex items-center gap-1.5 shrink-0 ml-1">
+                                  {catItems.length > 0 && <span className="text-[9px] bg-white/5 backdrop-blur-sm rounded-full px-1.5 py-0.5 font-bold text-theme-text-muted">{catItems.length}</span>}
+                                  <ChevronDown size={12} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                                </span>
+                              </div>
+                              {isOpen && (
+                                <div className="ml-2 mb-1 space-y-0.5 border-l-2 border-theme-accent/30 pl-2 max-h-96 overflow-y-auto">
+                                  {catItems.length === 0
+                                    ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
+                                    : catItems.slice(0, iptvLimit).map(item => (
+                                      <div 
+                                        key={item.id} 
+                                        draggable="true"
+                                        onDragStart={(e) => handleDragStart(e, `${iptvType}-${item.id}`)}
+                                        onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
+                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5 backdrop-blur-sm'}`}>
+                                        <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounde                                          <button onClick={(e)=>{ e.stopPropagation(); toggleFavorite(`${iptvType}-${item.id}`); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                          <Heart size={10} className={favorites.includes(`${iptvType}-${item.id}`) ? "fill-red-500 text-red-500" : "text-white/40 hover:text-red-400"} />
+                                          <button onClick={(e)=>{ e.stopPropagation(); setMoveMenu({ id: `${iptvType}-${item.id}`, x: e.clientX, y: e.clientY }); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                                          <FolderPlus size={10} className="text-white/40 hover:text-theme-accent shadow-sm" />
+                                        ))
                                   }
                                 </div>
                               )}

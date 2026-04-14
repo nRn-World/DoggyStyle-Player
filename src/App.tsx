@@ -119,7 +119,8 @@ const translations = {
     loading: "Loading...",
     saveCode: "Save Code",
     shareCodeInfo: "Choose a 4-digit code to link to your login. Share the code with a friend, and they can login automatically!",
-    createActivationCode: "Create Activation Code"
+    createActivationCode: "Create Activation Code",
+    repairAudio: "Repair Audio (Fix MKV/AC3)"
   },
   sv: {
     settings: "Inställningar",
@@ -236,7 +237,8 @@ const translations = {
     loading: "Laddar...",
     saveCode: "Spara kod",
     shareCodeInfo: "Välj en 4-siffrig kod som kopplas till din inloggning. Ge koden till en vän, så kan de logga in automatiskt!",
-    createActivationCode: "Skapa aktiveringskod"
+    createActivationCode: "Skapa aktiveringskod",
+    repairAudio: "Reparera ljud (Fixa MKV/AC3)"
   }
 };
 
@@ -265,6 +267,8 @@ export default function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const videoSrc = playlist[currentIndex]?.url || null;
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isTranscoding, setIsTranscoding] = useState(false);
+  const [realVideoUrl, setRealVideoUrl] = useState<string | null>(null);
 
   // Function to determine if a URL should be handled by hls.js
   const isHlsStream = (url: string) => {
@@ -276,6 +280,7 @@ export default function App() {
   // Handle video source and play state changes
   useEffect(() => {
     if (!videoRef.current || !videoSrc) {
+      setRealVideoUrl(null);
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -332,13 +337,28 @@ export default function App() {
         // Fallback for Safari/Mac
         videoRef.current.src = videoSrc;
       }
+      setRealVideoUrl(videoSrc);
     } else {
       // Normal file
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      videoRef.current.src = videoSrc;
+
+      // Check if it's a local file path
+      const isLocalPath = videoSrc.startsWith('/') || videoSrc.includes(':\\');
+      if (isLocalPath && (window as any).require) {
+        try {
+          const { ipcRenderer } = (window as any).require('electron');
+          ipcRenderer.invoke('get-stream-url', videoSrc, isTranscoding).then((url: string) => {
+            setRealVideoUrl(url);
+          });
+        } catch (e) {
+          setRealVideoUrl(videoSrc);
+        }
+      } else {
+        setRealVideoUrl(videoSrc);
+      }
     }
 
     return () => {
@@ -347,6 +367,21 @@ export default function App() {
         hlsRef.current = null;
       }
     };
+  }, [videoSrc, isTranscoding]);
+
+  // Separate effect to actually set the src to avoid re-triggering HLS logic unnecessarily
+  useEffect(() => {
+    if (videoRef.current && realVideoUrl) {
+      // If it's HLS, don't set src (handled by hls.js)
+      if (!isHlsStream(realVideoUrl)) {
+        videoRef.current.src = realVideoUrl;
+      }
+    }
+  }, [realVideoUrl]);
+
+  // Reset transcoding when videoSrc changes
+  useEffect(() => {
+    setIsTranscoding(false);
   }, [videoSrc]);
 
   // Handle play/pause sync
@@ -2320,7 +2355,7 @@ export default function App() {
 
             <video
               ref={videoRef}
-              src={isHlsStream(videoSrc) ? undefined : (videoSrc || undefined)}
+              src={isHlsStream(videoSrc) ? undefined : (realVideoUrl || undefined)}
               muted={isMuted}
               className={`w-full h-full object-contain transition-opacity duration-300 ${isVideoLoading && sidebarMode === 'iptv' ? 'opacity-0' : 'opacity-100'}`}
               style={transformStyle}
@@ -2333,7 +2368,9 @@ export default function App() {
                 const video = videoRef.current;
                 if (video?.error) {
                   console.error('Video error:', video.error.message, video.error.code);
-                  alert('Video error: ' + video.error.message);
+                  if (video.error.code === 4 && !isTranscoding) {
+                    setIsTranscoding(true); // Automatically try repair if it fails completely
+                  }
                 }
               }}
               onLoadedMetadata={() => {
@@ -2767,6 +2804,19 @@ export default function App() {
             >
               <Camera size={20} />
             </button>
+
+            {playlist[currentIndex] && !isHlsStream(videoSrc) && (
+              <button 
+                onClick={() => setIsTranscoding(!isTranscoding)} 
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all active:scale-95 ${isTranscoding ? 'bg-theme-accent text-black border-theme-accent shadow-[0_0_15px_rgba(var(--theme-accent),0.3)]' : 'bg-theme-bg-secondary text-theme-text-muted border-theme-border/30 hover:border-theme-accent hover:text-theme-accent'}`}
+                title={t.repairAudio}
+              >
+                <Activity size={16} className={isTranscoding ? "animate-pulse" : ""} />
+                <span className="text-[10px] font-black uppercase tracking-widest hidden lg:inline">
+                  {isTranscoding ? "Fixing Ljud / MKV" : "Fixa Ljud (MKV)"}
+                </span>
+              </button>
+            )}
 
             {/* Subtitle button */}
             <div className="relative flex items-center" ref={subtitleMenuRef}>

@@ -4,11 +4,19 @@ import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import path from 'path';
 import { fileURLToPath } from 'url';
+import express from 'express';
+import fs from 'fs';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegPath from 'ffmpeg-static';
+
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow = null;
+let streamServer = null;
+let streamPort = 3001;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -184,6 +192,74 @@ ipcMain.handle('get-network-info', async () => {
   } catch (error) {
     return 'Ethernet';
   }
+});
+
+// Media Stream Server
+function startStreamServer() {
+  const server = express();
+  
+  server.get('/stream', (req, res) => {
+    const videoPath = req.query.path;
+    const transcode = req.query.transcode === 'true';
+
+    if (!videoPath || !fs.existsSync(videoPath)) {
+      return res.status(404).send('File not found');
+    }
+
+    const stat = fs.statSync(videoPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (transcode) {
+      console.log(`[Stream] Transcoding audio to AAC for: ${videoPath}`);
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Transfer-Encoding': 'chunked'
+      });
+
+      ffmpeg(videoPath)
+        .videoCodec('copy') // Keep original video (fast)
+        .audioCodec('aac')  // Transcode audio to AAC (compatible)
+        .format('matroska') // MKV/MP4 hybrid streaming
+        .on('error', (err) => {
+          console.error('[Stream Error]', err.message);
+        })
+        .pipe(res, { end: true });
+    } else {
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunksize = (end - start) + 1;
+        const file = fs.createReadStream(videoPath, { start, end });
+        const head = {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunksize,
+          'Content-Type': 'video/mp4',
+        };
+        res.writeHead(206, head);
+        file.pipe(res);
+      } else {
+        const head = {
+          'Content-Length': fileSize,
+          'Content-Type': 'video/mp4',
+        };
+        res.writeHead(200, head);
+        fs.createReadStream(videoPath).pipe(res);
+      }
+    }
+  });
+
+  streamServer = server.listen(0, '127.0.0.1', () => {
+    streamPort = streamServer.address().port;
+    console.log(`🎬 Media server running on http://127.0.0.1:${streamPort}`);
+  });
+}
+
+ipcMain.handle('get-stream-url', (event, filePath, transcode = false) => {
+  if (!streamServer) startStreamServer();
+  return `http://127.0.0.1:${streamPort}/stream?path=${encodeURIComponent(filePath)}${transcode ? '&transcode=true' : ''}`;
 });
 
 app.on('window-all-closed', () => {

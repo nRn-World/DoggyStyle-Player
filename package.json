@@ -116,6 +116,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "node_modules/**/*",
       "Logo Bilder/logomp4.mp4",
       "Logo Bilder/logoW-cropped-no-bg1024x1024.png",
       "Logo Bilder/Installation.png",

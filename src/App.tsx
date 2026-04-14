@@ -3406,56 +3406,6 @@ export default function App() {
                                 <div className="ml-2 mb-1 space-y-0.5 border-l-2 border-theme-accent/30 pl-2 max-h-96 overflow-y-auto">
                                   {catItems.length === 0
                                     ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
-                                  {catItems.length === 0
-                                    ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
-                                  {catItems.length === 0
-                                    ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
-                                    : catItems.slice(0, iptvLimit).map(item => (
-                                      <div 
-                                        key={item.id} 
-                                        draggable="true"
-                                        onDragStart={(e) => handleDragStart(e, `${iptvType}-${item.id}`)}
-                                        onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
-                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5 backdrop-blur-sm'}`}>
-                                        <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounded" onError={(e)=>{ (e.target as any).style.display='none'; }} />
-                                        <span className="truncate flex-1">{item.name}</span>
-                                        <button onClick={(e)=>{ e.stopPropagation(); toggleFavorite(`${iptvType}-${item.id}`); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                          <Heart size={10} className={favorites.includes(`${iptvType}-${item.id}`) ? "fill-red-500 text-red-500" : "text-white/40 hover:text-red-400"} />
-                                        </button>
-                                        <button onClick={(e)=>{ e.stopPropagation(); setMoveMenu({ id: `${iptvType}-${item.id}`, x: e.clientX, y: e.clientY }); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
-                                          <FolderPlus size={10} className="text-white/40 hover:text-theme-accent shadow-sm" />
-                                        </button>
-                                      </div>
-                                    ))
-                                  }
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                     </div>
-                  </div>
-                        )}
-
-                        {/* Per-category accordions */}
-                        {iptvCategories.map(cat => {
-                          const isOpen = selectedCategoryId === cat.id;
-                          const list = iptvMode==='m3u' ? iptvStreams : (iptvType==='live' ? iptvStreams : iptvType==='movie' ? iptvMovies : iptvSeries);
-                          const catItems = list.filter(s => s.category_id===cat.id && (!iptvSearch || s.name.toLowerCase().includes(iptvSearch.toLowerCase()))).sort((a,b)=>a.name.localeCompare(b.name));
-                          return (
-                            <div key={cat.id}>
-                              <div onClick={() => setSelectedCategoryId(isOpen ? '' : cat.id)}
-                                className={`iptv-category-item flex items-center justify-between ${isOpen ? 'active' : ''}`}>
-                                <span className="truncate">{cat.name}</span>
-                                <span className="flex items-center gap-1.5 shrink-0 ml-1">
-                                  {catItems.length > 0 && <span className="text-[9px] bg-white/5 backdrop-blur-sm rounded-full px-1.5 py-0.5 font-bold text-theme-text-muted">{catItems.length}</span>}
-                                  <ChevronDown size={12} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                                </span>
-                              </div>
-                              {isOpen && (
-                                <div className="ml-2 mb-1 space-y-0.5 border-l-2 border-theme-accent/30 pl-2 max-h-96 overflow-y-auto">
-                                  {catItems.length === 0
-                                    ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
                                     : catItems.slice(0, iptvLimit).map(item => (
                                       <div 
                                         key={item.id} 

@@ -1372,9 +1372,6 @@ export default function App() {
     if (e.dataTransfer.files) handleFiles(e.dataTransfer.files);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
 
   const [urlInput, setUrlInput] = useState('');
 
@@ -3409,6 +3406,10 @@ export default function App() {
                                 <div className="ml-2 mb-1 space-y-0.5 border-l-2 border-theme-accent/30 pl-2 max-h-96 overflow-y-auto">
                                   {catItems.length === 0
                                     ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
+                                  {catItems.length === 0
+                                    ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
+                                  {catItems.length === 0
+                                    ? <p className="text-[10px] text-theme-text-muted px-2 py-2 italic">{t.noChannels}</p>
                                     : catItems.slice(0, iptvLimit).map(item => (
                                       <div 
                                         key={item.id} 
@@ -3462,11 +3463,16 @@ export default function App() {
                                         onDragStart={(e) => handleDragStart(e, `${iptvType}-${item.id}`)}
                                         onClick={() => { if (iptvType==='series') fetchSeriesInfo(item); else { setPlaylist([{id:`iptv-${iptvType}-${item.id}`,name:item.name,url:item.url}]); setCurrentIndex(0); setIsPlaying(true); } }}
                                         className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all group ${videoSrc===item.url ? 'bg-theme-accent/20 text-theme-accent font-semibold' : 'text-theme-text/70 hover:text-theme-text hover:bg-white/5 backdrop-blur-sm'}`}>
-                                        <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounde                                          <button onClick={(e)=>{ e.stopPropagation(); toggleFavorite(`${iptvType}-${item.id}`); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                        <img src={item.icon} alt="" className="w-6 h-4 object-contain shrink-0 rounded" onError={(e)=>{ (e.target as any).style.display='none'; }} />
+                                        <span className="truncate flex-1">{item.name}</span>
+                                        <button onClick={(e)=>{ e.stopPropagation(); toggleFavorite(`${iptvType}-${item.id}`); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                           <Heart size={10} className={favorites.includes(`${iptvType}-${item.id}`) ? "fill-red-500 text-red-500" : "text-white/40 hover:text-red-400"} />
-                                          <button onClick={(e)=>{ e.stopPropagation(); setMoveMenu({ id: `${iptvType}-${item.id}`, x: e.clientX, y: e.clientY }); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                                        </button>
+                                        <button onClick={(e)=>{ e.stopPropagation(); setMoveMenu({ id: `${iptvType}-${item.id}`, x: e.clientX, y: e.clientY }); }} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
                                           <FolderPlus size={10} className="text-white/40 hover:text-theme-accent shadow-sm" />
-                                        ))
+                                        </button>
+                                      </div>
+                                    ))
                                   }
                                 </div>
                               )}
